@@ -82,7 +82,6 @@ func TestEnableRejectsUnsatisfiedRequiredSkill(t *testing.T) {
 	if err := os.MkdirAll(project, 0o755); err != nil {
 		t.Fatal(err)
 	}
-
 	oldHome := os.Getenv(config.HomeEnv)
 	t.Setenv(config.HomeEnv, home)
 	defer t.Setenv(config.HomeEnv, oldHome)
@@ -106,5 +105,39 @@ func TestEnableRejectsUnsatisfiedRequiredSkill(t *testing.T) {
 
 	if _, statErr := os.Stat(config.ProjectConfigPath(project)); !os.IsNotExist(statErr) {
 		t.Fatal("expected no config written when enable fails validation")
+	}
+}
+
+func TestRunUnknownProviderListsKnownProviders(t *testing.T) {
+	home := t.TempDir()
+	project := t.TempDir()
+	oldHome := os.Getenv(config.HomeEnv)
+	t.Setenv(config.HomeEnv, home)
+	defer t.Setenv(config.HomeEnv, oldHome)
+	oldWd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(oldWd)
+	if err := os.Chdir(project); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	err = Execute(nil, []string{"run", "does-not-exist"}, &stdout, &stderr)
+	if err == nil {
+		t.Fatal("Execute(run does-not-exist) error = nil, want error")
+	}
+	if !strings.Contains(stderr.String(), "claude") || !strings.Contains(stderr.String(), "codex") {
+		t.Fatalf("stderr = %q, want it to list known providers", stderr.String())
+	}
+}
+
+func TestUsageListsKnownProvidersNotHardcoded(t *testing.T) {
+	var stdout bytes.Buffer
+	printUsage(&stdout)
+	out := stdout.String()
+	if !strings.Contains(out, "claude") || !strings.Contains(out, "codex") {
+		t.Fatalf("usage = %q, want it to mention every registered provider", out)
 	}
 }

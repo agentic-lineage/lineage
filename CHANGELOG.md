@@ -43,3 +43,8 @@ All notable changes to Lineage will be documented here.
   are now validated against it at discovery time, and package content
   digests refuse to follow a symlink rather than silently hashing
   whatever it points at outside the package.
+- `internal/provider` now has a single provider registry (`Known`, `Get`,
+  `IsKnown`) naming every supported provider and where it reads staged
+  content. `internal/runtime` and the CLI's usage text consult it instead
+  of hardcoding `claude`/`codex`, so adding a provider is a one-entry
+  change in one file rather than a hunt through the core runtime.

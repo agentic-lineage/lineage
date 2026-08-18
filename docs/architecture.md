@@ -37,3 +37,7 @@ The receiver should be able to inspect these contents before enabling a package.
 ## Safety Model
 
 Packages are local files, but they are still untrusted input. Lineage should validate manifests, normalize paths, avoid secret capture, and require explicit permission before any setup flow creates or changes files.
+
+## Decision Records
+
+Architecture decisions are tracked in the [decision log](decisions/README.md).
