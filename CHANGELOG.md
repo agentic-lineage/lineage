@@ -62,10 +62,10 @@ All notable changes to Lineage will be documented here.
 - `lineage run claude` now materializes enabled packages for Claude Code:
   skills are staged into `.claude/skills/<pkg>-<skill>/` and a generated
   section in `CLAUDE.md` lists active packages, agents, policies, and
-  workflows. Materialization is idempotent and reversible (re-running
-  reflects the current enabled-package set exactly, via a per-provider
-  `.lineage/materialized-<provider>.json` state file) and is skipped
-  entirely on `--dry-run`.
+	  workflows. Materialization is idempotent and reversible (re-running
+	  reflects the current enabled-package set exactly, via a per-provider
+	  `.lineage/materialized-<provider>.json` state file) and is skipped
+	  entirely on `--dry-run`.
 - `lineage run codex` materializes the same way, into
   `.agents/skills/<pkg>-<skill>/` and a generated section in
   `AGENTS.md`. Claude and Codex materialization stay isolated from
