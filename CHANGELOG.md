@@ -43,3 +43,9 @@ All notable changes to Lineage will be documented here.
   are now validated against it at discovery time, and package content
   digests refuse to follow a symlink rather than silently hashing
   whatever it points at outside the package.
+- Added `internal/packages.ScanForSecrets`, a lightweight scan for
+  credential-shaped files and content (`.env`, private key files/headers,
+  AWS/GitHub token shapes) across a package directory. Findings report a
+  path and reason only — never the matched value — so results are safe to
+  print. Not yet wired into a command; `lineage package validate` will
+  surface it next.
