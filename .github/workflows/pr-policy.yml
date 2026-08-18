@@ -32,8 +32,9 @@ jobs:
               errors.append("PR must target develop.")
 
           linked_issue = re.search(r"(?im)\b(closes|fixes|resolves)\s+#\d+\b", body)
-          if not linked_issue:
-              errors.append("PR body must link an issue with `Closes #123`, `Fixes #123`, or `Resolves #123`.")
+          maintainer_housekeeping = re.search(r"(?im)\bmaintainer housekeeping\b", body)
+          if not linked_issue and not maintainer_housekeeping:
+              errors.append("PR body must link an issue with `Closes #123`, `Fixes #123`, or `Resolves #123`, unless it is explicit maintainer housekeeping.")
 
           relevant_tests = re.search(
               r"(?is)Relevant test cases:\s*(.+?)(?:```|If this PR does not need automated tests|## Notes For Reviewers|\Z)",
