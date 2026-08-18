@@ -62,3 +62,49 @@ func TestEnableAndDryRun(t *testing.T) {
 		t.Fatalf("dry-run output = %s", stdout.String())
 	}
 }
+
+func TestEnableRejectsUnsatisfiedRequiredSkill(t *testing.T) {
+	tmp := t.TempDir()
+	home := filepath.Join(tmp, "home")
+	project := filepath.Join(tmp, "project")
+	pkgDir := filepath.Join(project, "needs-review-basics")
+	if err := packages.InitPackage(pkgDir, "needs-review-basics"); err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := packages.LoadManifest(pkgDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest.Requires.Skills = []string{"review-basics"}
+	if err := packages.SaveManifest(pkgDir, manifest); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(project, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	oldHome := os.Getenv(config.HomeEnv)
+	t.Setenv(config.HomeEnv, home)
+	defer t.Setenv(config.HomeEnv, oldHome)
+	oldWd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(oldWd)
+	if err := os.Chdir(project); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	err = Execute(nil, []string{"enable", "./needs-review-basics"}, &stdout, &stderr)
+	if err == nil {
+		t.Fatal("enable error = nil, want error for unsatisfied requires.skills")
+	}
+	if !strings.Contains(stderr.String(), "review-basics") {
+		t.Fatalf("stderr = %q, want it to name the missing skill", stderr.String())
+	}
+
+	if _, statErr := os.Stat(config.ProjectConfigPath(project)); !os.IsNotExist(statErr) {
+		t.Fatal("expected no config written when enable fails validation")
+	}
+}

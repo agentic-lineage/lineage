@@ -10,13 +10,20 @@ import (
 
 const ManifestFileName = "lineage.yaml"
 
+// CurrentSchema is the only lineage.yaml schema this build understands.
+// schema describes how to interpret the manifest; version describes the
+// package itself — the two change independently.
+const CurrentSchema = 1
+
 type Manifest struct {
-	Name        string      `yaml:"name"`
-	Version     string      `yaml:"version"`
-	Description string      `yaml:"description"`
-	Exports     Exports     `yaml:"exports"`
-	Requires    Requires    `yaml:"requires"`
-	Entrypoints Entrypoints `yaml:"entrypoints"`
+	Schema       int          `yaml:"schema"`
+	Name         string       `yaml:"name"`
+	Version      string       `yaml:"version"`
+	Description  string       `yaml:"description"`
+	Exports      Exports      `yaml:"exports"`
+	Requires     Requires     `yaml:"requires"`
+	Entrypoints  Entrypoints  `yaml:"entrypoints"`
+	Capabilities Capabilities `yaml:"capabilities"`
 }
 
 type Exports struct {
@@ -33,8 +40,21 @@ type Entrypoints struct {
 	Codex  string `yaml:"codex"`
 }
 
+// Capabilities is a purely declarative statement of what a package wants
+// access to — printed by lineage package validate and the enable-time plan
+// so a receiver can see it before enabling, not enforced by this build.
+type Capabilities struct {
+	Filesystem FilesystemCapabilities `yaml:"filesystem"`
+	Network    []string               `yaml:"network"`
+}
+
+type FilesystemCapabilities struct {
+	Read []string `yaml:"read"`
+}
+
 func DefaultManifest(name string) Manifest {
 	return Manifest{
+		Schema:      CurrentSchema,
 		Name:        name,
 		Version:     "0.1.0",
 		Description: "A shareable Lineage agent package.",
@@ -46,6 +66,10 @@ func DefaultManifest(name string) Manifest {
 			Skills: []string{},
 		},
 		Entrypoints: Entrypoints{},
+		Capabilities: Capabilities{
+			Filesystem: FilesystemCapabilities{Read: []string{}},
+			Network:    []string{},
+		},
 	}
 }
 
@@ -65,6 +89,14 @@ func LoadManifest(dir string) (Manifest, error) {
 	}
 	if manifest.Version == "" {
 		manifest.Version = "0.1.0"
+	}
+	// schema 0 means the manifest predates the schema field; treat that as
+	// schema 1, the only schema that ever existed before it was added.
+	if manifest.Schema == 0 {
+		manifest.Schema = CurrentSchema
+	}
+	if manifest.Schema != CurrentSchema {
+		return Manifest{}, fmt.Errorf("manifest %s declares schema %d, but this build only understands schema %d", path, manifest.Schema, CurrentSchema)
 	}
 	return manifest, nil
 }

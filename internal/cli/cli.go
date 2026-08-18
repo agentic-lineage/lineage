@@ -168,9 +168,25 @@ func runEnable(args []string, home string, stdout, stderr io.Writer) error {
 		}
 	}
 
-	if !contains(cfg.EnabledPackages, storedRef) {
-		cfg.EnabledPackages = append(cfg.EnabledPackages, storedRef)
+	newEnabled := cfg.EnabledPackages
+	if !contains(newEnabled, storedRef) {
+		newEnabled = append(append([]string{}, newEnabled...), storedRef)
 	}
+
+	// Validate against the full set that would be enabled after this
+	// change, not just the package being added: a required skill can
+	// legitimately come from a different already-enabled package.
+	resolvedForValidation, err := packages.ResolveEnabled(home, cfg.Workspace, projectRoot, newEnabled)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+	if err := packages.ValidateDependencies(resolvedForValidation); err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+
+	cfg.EnabledPackages = newEnabled
 	if err := config.SaveProjectConfig(configPath, cfg); err != nil {
 		fmt.Fprintln(stderr, err)
 		return err

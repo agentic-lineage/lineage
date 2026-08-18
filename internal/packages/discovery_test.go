@@ -28,6 +28,88 @@ func TestManifestRoundTripAndDiscovery(t *testing.T) {
 	assertEqualSlices(t, pkg.Workflows, []string{"ship"})
 	assertEqualSlices(t, pkg.Agents, []string{"reviewer.md"})
 	assertEqualSlices(t, pkg.Policies, []string{"safe.md"})
+	if pkg.Digest == "" {
+		t.Fatal("Digest is empty, want a computed digest")
+	}
+}
+
+func TestDiscoverHonorsDeclaredExports(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "declared-pack")
+	if err := InitPackage(root, "declared-pack"); err != nil {
+		t.Fatal(err)
+	}
+	mustWrite(t, filepath.Join(root, "agents", "reviewer.md"), "# Reviewer")
+	mustWrite(t, filepath.Join(root, "agents", "internal-only.md"), "# Not exported")
+	mustWrite(t, filepath.Join(root, "workflows", "ship", "WORKFLOW.md"), "# Ship")
+
+	manifest, err := LoadManifest(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest.Exports.Agents = []string{"reviewer.md"}
+	if err := SaveManifest(root, manifest); err != nil {
+		t.Fatal(err)
+	}
+
+	pkg, err := Discover(root)
+	if err != nil {
+		t.Fatalf("Discover() error = %v", err)
+	}
+	// Declared and present: kept. Present but undeclared: excluded, even
+	// though it exists on disk.
+	assertEqualSlices(t, pkg.Agents, []string{"reviewer.md"})
+	// Workflows were never declared, so discovery falls back to whatever's
+	// on disk (backward compatible).
+	assertEqualSlices(t, pkg.Workflows, []string{"ship"})
+}
+
+func TestDiscoverRejectsDeclaredButMissingExport(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "broken-pack")
+	if err := InitPackage(root, "broken-pack"); err != nil {
+		t.Fatal(err)
+	}
+
+	manifest, err := LoadManifest(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest.Exports.Agents = []string{"missing-reviewer.md"}
+	if err := SaveManifest(root, manifest); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := Discover(root); err == nil {
+		t.Fatal("Discover() error = nil, want error for declared-but-missing export")
+	}
+}
+
+func TestComputeDigestStableAndSensitiveToContent(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "digest-pack")
+	if err := InitPackage(root, "digest-pack"); err != nil {
+		t.Fatal(err)
+	}
+	mustWrite(t, filepath.Join(root, "skills", "review", "SKILL.md"), "# Review")
+
+	first, err := ComputeDigest(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := ComputeDigest(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first != second {
+		t.Fatalf("ComputeDigest() not stable: %q vs %q", first, second)
+	}
+
+	mustWrite(t, filepath.Join(root, "skills", "review", "SKILL.md"), "# Review, edited")
+	third, err := ComputeDigest(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if third == first {
+		t.Fatal("ComputeDigest() unchanged after content edit, want a different digest")
+	}
 }
 
 func TestResolveReferenceOrder(t *testing.T) {

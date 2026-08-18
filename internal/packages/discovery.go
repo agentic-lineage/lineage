@@ -1,7 +1,10 @@
 package packages
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -15,6 +18,10 @@ type Package struct {
 	Workflows []string
 	Agents    []string
 	Policies  []string
+	// Digest is a sha256 content digest over the manifest and every file in
+	// the package's standard content directories, in deterministic order.
+	// Identical package content always produces the same digest.
+	Digest string
 }
 
 func Discover(dir string) (Package, error) {
@@ -27,11 +34,102 @@ func Discover(dir string) (Package, error) {
 		Path:     dir,
 		Manifest: manifest,
 	}
+
+	workflows, err := applyExportAuthority("workflow", manifest.Exports.Workflows, discoverNamesWithFile(filepath.Join(dir, "workflows"), "WORKFLOW.md"))
+	if err != nil {
+		return Package{}, fmt.Errorf("%s: %w", dir, err)
+	}
+	pkg.Workflows = workflows
+
+	agents, err := applyExportAuthority("agent", manifest.Exports.Agents, discoverEntryNames(filepath.Join(dir, "agents")))
+	if err != nil {
+		return Package{}, fmt.Errorf("%s: %w", dir, err)
+	}
+	pkg.Agents = agents
+
 	pkg.Skills = discoverSkillNames(filepath.Join(dir, "skills"))
-	pkg.Workflows = discoverNamesWithFile(filepath.Join(dir, "workflows"), "WORKFLOW.md")
-	pkg.Agents = discoverEntryNames(filepath.Join(dir, "agents"))
 	pkg.Policies = discoverEntryNames(filepath.Join(dir, "policies"))
+
+	digest, err := ComputeDigest(dir)
+	if err != nil {
+		return Package{}, fmt.Errorf("%s: %w", dir, err)
+	}
+	pkg.Digest = digest
+
 	return pkg, nil
+}
+
+// applyExportAuthority implements "manifest is authoritative, filesystem is
+// payload": when the manifest explicitly declares a non-empty export list,
+// every declared name must actually be discoverable on disk (a missing one
+// is a validation error), and only declared names count as part of the
+// package's exported set — anything discovered but not declared is allowed
+// to exist locally but is excluded from the result. An empty/omitted
+// declaration means "not yet declared", not "declares nothing": it falls
+// back to whatever's discovered on disk, matching pre-schema behavior so
+// existing packages that never declared exports keep working unchanged.
+func applyExportAuthority(kind string, declared, discovered []string) ([]string, error) {
+	if len(declared) == 0 {
+		return discovered, nil
+	}
+
+	discoveredSet := make(map[string]bool, len(discovered))
+	for _, name := range discovered {
+		discoveredSet[name] = true
+	}
+
+	result := make([]string, 0, len(declared))
+	for _, name := range declared {
+		if !discoveredSet[name] {
+			return nil, fmt.Errorf("manifest declares %s %q but it was not found", kind, name)
+		}
+		result = append(result, name)
+	}
+	sort.Strings(result)
+	return result, nil
+}
+
+// ComputeDigest returns a stable "sha256:<hex>" content digest over a
+// package's manifest and every file in its standard content directories
+// (skills, workflows, agents, policies, references, adapters), hashed in
+// deterministic path order. Two packages with byte-identical content always
+// produce the same digest; any content change changes it.
+func ComputeDigest(dir string) (string, error) {
+	h := sha256.New()
+
+	manifestData, err := os.ReadFile(filepath.Join(dir, ManifestFileName))
+	if err != nil {
+		return "", fmt.Errorf("read manifest for digest: %w", err)
+	}
+	h.Write(manifestData)
+
+	var files []string
+	for _, sub := range []string{"skills", "workflows", "agents", "policies", "references", "adapters"} {
+		root := filepath.Join(dir, sub)
+		_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return nil
+			}
+			rel, relErr := filepath.Rel(dir, path)
+			if relErr != nil {
+				return nil
+			}
+			files = append(files, filepath.ToSlash(rel))
+			return nil
+		})
+	}
+	sort.Strings(files)
+
+	for _, rel := range files {
+		data, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(rel)))
+		if err != nil {
+			return "", fmt.Errorf("read %s for digest: %w", rel, err)
+		}
+		h.Write([]byte(rel))
+		h.Write(data)
+	}
+
+	return "sha256:" + hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // InitPackage scaffolds a package directory: a lineage.yaml manifest plus

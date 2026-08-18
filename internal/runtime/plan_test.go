@@ -44,7 +44,7 @@ func TestBuildPlanDryRun(t *testing.T) {
 	}
 
 	dryRun := plan.DryRunString()
-	for _, needle := range []string{"provider: claude", "workspace: makers", "agent-pack@0.1.0", "skills: review", "workflows: ship"} {
+	for _, needle := range []string{"provider: claude", "workspace: makers", "agent-pack@0.1.0", "skills: review", "workflows: ship", "digest: sha256:", "capabilities:", "filesystem.read: none", "network: none"} {
 		if !strings.Contains(dryRun, needle) {
 			t.Fatalf("DryRunString() missing %q:\n%s", needle, dryRun)
 		}

@@ -34,6 +34,9 @@ func BuildPlan(providerName, cwd, home string, args []string) (Plan, error) {
 	if err != nil {
 		return Plan{}, err
 	}
+	if err := packages.ValidateDependencies(resolved); err != nil {
+		return Plan{}, err
+	}
 
 	providerPlan, err := provider.Resolve(providerName, home, found.Config, args)
 	if err != nil {
@@ -68,10 +71,14 @@ func (p Plan) DryRunString() string {
 	for _, pkg := range p.Packages {
 		fmt.Fprintf(&b, "  - %s@%s\n", pkg.Manifest.Name, pkg.Manifest.Version)
 		fmt.Fprintf(&b, "    path: %s\n", filepath.Clean(pkg.Path))
+		fmt.Fprintf(&b, "    digest: %s\n", emptyValue(pkg.Digest))
 		fmt.Fprintf(&b, "    skills: %s\n", listValue(pkg.Skills))
 		fmt.Fprintf(&b, "    workflows: %s\n", listValue(pkg.Workflows))
 		fmt.Fprintf(&b, "    agents: %s\n", listValue(pkg.Agents))
 		fmt.Fprintf(&b, "    policies: %s\n", listValue(pkg.Policies))
+		fmt.Fprintf(&b, "    capabilities:\n")
+		fmt.Fprintf(&b, "      filesystem.read: %s\n", listValue(pkg.Manifest.Capabilities.Filesystem.Read))
+		fmt.Fprintf(&b, "      network: %s\n", listValue(pkg.Manifest.Capabilities.Network))
 	}
 	return b.String()
 }
