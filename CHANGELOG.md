@@ -78,3 +78,9 @@ All notable changes to Lineage will be documented here.
   for scripts. Re-running with an unchanged package set doesn't
   re-prompt. `lineage.Execute` now takes a `stdin io.Reader` to support
   this.
+- Added `lineage package export <path> [-o file.tgz]`: produces a
+  deterministic tar.gz archive (manifest + content directories, sorted
+  order, normalized permissions and timestamps) after running the same
+  checks as `lineage package validate` and refusing to export if any
+  fail. Two exports of byte-identical package content always produce
+  byte-identical archive bytes.

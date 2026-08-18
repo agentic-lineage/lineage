@@ -88,14 +88,19 @@ func runInit(args []string, home string, stdout, stderr io.Writer) error {
 }
 
 func runPackage(args []string, stdout, stderr io.Writer) error {
-	if len(args) != 2 {
-		err := fmt.Errorf("usage: lineage package init <name> | lineage package validate <path>")
+	if len(args) < 2 {
+		err := fmt.Errorf("usage: lineage package init <name> | lineage package validate <path> | lineage package export <path> [-o file.tgz]")
 		fmt.Fprintln(stderr, err)
 		return err
 	}
 
 	switch args[0] {
 	case "init":
+		if len(args) != 2 {
+			err := fmt.Errorf("usage: lineage package init <name>")
+			fmt.Fprintln(stderr, err)
+			return err
+		}
 		name := args[1]
 		dir := filepath.Clean(name)
 		if err := packages.InitPackage(dir, filepath.Base(name)); err != nil {
@@ -105,12 +110,70 @@ func runPackage(args []string, stdout, stderr io.Writer) error {
 		fmt.Fprintf(stdout, "initialized package %s\n", dir)
 		return nil
 	case "validate":
+		if len(args) != 2 {
+			err := fmt.Errorf("usage: lineage package validate <path>")
+			fmt.Fprintln(stderr, err)
+			return err
+		}
 		return runPackageValidate(filepath.Clean(args[1]), stdout, stderr)
+	case "export":
+		return runPackageExport(args[1:], stdout, stderr)
 	default:
 		err := fmt.Errorf("unknown package command %q", args[0])
 		fmt.Fprintln(stderr, err)
 		return err
 	}
+}
+
+func runPackageExport(args []string, stdout, stderr io.Writer) error {
+	if len(args) < 1 {
+		err := fmt.Errorf("usage: lineage package export <path> [-o file.tgz]")
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+
+	dir := filepath.Clean(args[0])
+	outPath := ""
+	for i := 1; i < len(args); i++ {
+		if args[i] == "-o" && i+1 < len(args) {
+			outPath = args[i+1]
+			i++
+			continue
+		}
+		err := fmt.Errorf("usage: lineage package export <path> [-o file.tgz]")
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+
+	if outPath == "" {
+		manifest, err := packages.LoadManifest(dir)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return err
+		}
+		outPath = fmt.Sprintf("%s-%s.tgz", manifest.Name, manifest.Version)
+	}
+
+	f, err := os.Create(outPath)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+
+	if err := packages.Export(dir, f); err != nil {
+		f.Close()
+		os.Remove(outPath)
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+	if err := f.Close(); err != nil {
+		os.Remove(outPath)
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+
+	fmt.Fprintf(stdout, "exported %s to %s\n", dir, outPath)
+	return nil
 }
 
 func runPackageValidate(dir string, stdout, stderr io.Writer) error {
@@ -306,9 +369,9 @@ func runProvider(ctx context.Context, args []string, home string, stdin io.Reade
 		fmt.Fprint(stdout, "\nProceed? [y/N] ")
 		if !confirm(stdin) {
 			fmt.Fprintln(stdout, "aborted: materialization was not approved")
-				return nil
-			}
+			return nil
 		}
+	}
 
 	if err := materialize.Apply(plan.ProjectRoot, adapter, plan.Packages); err != nil {
 		fmt.Fprintln(stderr, err)
@@ -362,6 +425,7 @@ Usage:
   lineage init workspace <name>
   lineage package init <name>
   lineage package validate <path>
+  lineage package export <path> [-o file.tgz]
   lineage enable <package-path-or-id>
   lineage run <%s> [--dry-run] [--yes] [-- provider args...]
   lineage install-shims

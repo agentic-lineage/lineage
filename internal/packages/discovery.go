@@ -103,25 +103,21 @@ func validateEntrypoint(dir, provider, entrypoint string) error {
 	return nil
 }
 
-// ComputeDigest returns a stable "sha256:<hex>" content digest over a
-// package's manifest and every file in its standard content directories
-// (skills, workflows, agents, policies, references, adapters), hashed in
-// deterministic path order. Two packages with byte-identical content always
-// produce the same digest; any content change changes it. A symlink
-// anywhere in those directories is rejected rather than followed, since
-// package content is untrusted and a symlink could otherwise pull
-// arbitrary file content from outside the package into the digest.
-func ComputeDigest(dir string) (string, error) {
-	h := sha256.New()
+// contentDirNames are the standard package subdirectories that hold a
+// package's actual distributable payload — used consistently by digest
+// computation, export, and (once it exists) archive validation, so all
+// three agree on exactly what "the package's content" means.
+var contentDirNames = []string{"skills", "workflows", "agents", "policies", "references", "adapters"}
 
-	manifestData, err := os.ReadFile(filepath.Join(dir, ManifestFileName))
-	if err != nil {
-		return "", fmt.Errorf("read manifest for digest: %w", err)
-	}
-	h.Write(manifestData)
-
+// contentFiles returns every regular file under dir's standard content
+// directories, as paths relative to dir in deterministic (sorted,
+// forward-slashed) order. A symlink anywhere in those directories is
+// rejected rather than followed or silently skipped, since package content
+// is untrusted and a symlink could otherwise pull arbitrary file content
+// from outside the package into a digest or export archive.
+func contentFiles(dir string) ([]string, error) {
 	var files []string
-	for _, sub := range []string{"skills", "workflows", "agents", "policies", "references", "adapters"} {
+	for _, sub := range contentDirNames {
 		root := filepath.Join(dir, sub)
 		walkErr := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
@@ -132,7 +128,7 @@ func ComputeDigest(dir string) (string, error) {
 				if relErr != nil {
 					rel = path
 				}
-				return fmt.Errorf("refusing to include symlink %s in digest", rel)
+				return fmt.Errorf("refusing to include symlink %s", rel)
 			}
 			if d.IsDir() {
 				return nil
@@ -145,10 +141,30 @@ func ComputeDigest(dir string) (string, error) {
 			return nil
 		})
 		if walkErr != nil {
-			return "", walkErr
+			return nil, walkErr
 		}
 	}
 	sort.Strings(files)
+	return files, nil
+}
+
+// ComputeDigest returns a stable "sha256:<hex>" content digest over a
+// package's manifest and every file in its standard content directories,
+// hashed in deterministic path order. Two packages with byte-identical
+// content always produce the same digest; any content change changes it.
+func ComputeDigest(dir string) (string, error) {
+	h := sha256.New()
+
+	manifestData, err := os.ReadFile(filepath.Join(dir, ManifestFileName))
+	if err != nil {
+		return "", fmt.Errorf("read manifest for digest: %w", err)
+	}
+	h.Write(manifestData)
+
+	files, err := contentFiles(dir)
+	if err != nil {
+		return "", fmt.Errorf("read content for digest: %w", err)
+	}
 
 	for _, rel := range files {
 		data, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(rel)))

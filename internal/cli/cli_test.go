@@ -310,3 +310,47 @@ func TestRunDoesNotRePromptWhenUnchanged(t *testing.T) {
 		t.Fatalf("second run stdout = %q, want no re-prompt for an unchanged package set", stdout2.String())
 	}
 }
+
+func TestPackageExportWritesArchive(t *testing.T) {
+	root := t.TempDir()
+	pkgDir := filepath.Join(root, "export-me")
+	if err := packages.InitPackage(pkgDir, "export-me"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(pkgDir, "skills", "review"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pkgDir, "skills", "review", "SKILL.md"), []byte("# Review"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	outPath := filepath.Join(root, "out.tgz")
+	var stdout, stderr bytes.Buffer
+	if err := Execute(nil, []string{"package", "export", pkgDir, "-o", outPath}, nil, &stdout, &stderr); err != nil {
+		t.Fatalf("export error = %v stderr=%s", err, stderr.String())
+	}
+	if _, err := os.Stat(outPath); err != nil {
+		t.Fatalf("expected archive at %s: %v", outPath, err)
+	}
+}
+
+func TestPackageExportRefusesInvalidPackage(t *testing.T) {
+	root := t.TempDir()
+	pkgDir := filepath.Join(root, "broken")
+	if err := packages.InitPackage(pkgDir, "broken"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pkgDir, ".env"), []byte("SECRET=1"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	outPath := filepath.Join(root, "out.tgz")
+	var stdout, stderr bytes.Buffer
+	err := Execute(nil, []string{"package", "export", pkgDir, "-o", outPath}, nil, &stdout, &stderr)
+	if err == nil {
+		t.Fatal("export error = nil, want error for a package with a secret finding")
+	}
+	if _, statErr := os.Stat(outPath); !os.IsNotExist(statErr) {
+		t.Fatal("expected no archive left behind when export fails")
+	}
+}
