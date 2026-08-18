@@ -32,3 +32,8 @@ Each record should include:
 - [0002 Keep Core Provider-Agnostic](0002-keep-core-provider-agnostic.md)
 - [0003 Use Goal-Based Milestones](0003-use-goal-based-milestones.md)
 - [0004 Require Issue Links And Test Plans For PRs](0004-require-issue-links-and-test-plans-for-prs.md)
+- [0005 Manifest Is Authoritative, With Schema Versioning And A Content Digest](0005-manifest-is-authoritative-with-schema-and-digest.md)
+- [0006 Capabilities Are Declared, Not Enforced, In V1](0006-capabilities-are-declared-not-enforced.md)
+- [0007 Providers Are A Single Registry Entry](0007-providers-are-a-single-registry-entry.md)
+- [0008 Materialization Is Idempotent, Reversible, And Permission-Gated](0008-materialization-is-idempotent-and-permission-gated.md)
+- [0009 Secret Scanning Is A Documented Allow/Denylist, Not A General Engine](0009-secret-scanning-is-a-documented-list-not-an-engine.md)
