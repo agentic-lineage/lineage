@@ -32,6 +32,13 @@ type FoundProjectConfig struct {
 	Config ProjectConfig
 }
 
+// ErrProjectConfigNotFound is returned by FindProjectConfig when no
+// .lineage/config.yaml exists at the start directory or any parent.
+// Callers that can legitimately initialize a new project config (such as
+// `lineage enable`) should check for this with errors.Is and fall back to
+// creating one, rather than treating every non-nil error the same way.
+var ErrProjectConfigNotFound = errors.New("no " + DirName + "/" + ConfigFileName + " found in this directory or any parent")
+
 func DefaultProjectConfig() ProjectConfig {
 	return ProjectConfig{
 		EnabledPackages:     []string{},
@@ -58,7 +65,7 @@ func FindProjectConfig(start string) (FoundProjectConfig, error) {
 
 		parent := filepath.Dir(current)
 		if parent == current {
-			return FoundProjectConfig{}, fmt.Errorf("missing %s; run lineage enable <package-path-or-id> from a project first", filepath.Join(DirName, ConfigFileName))
+			return FoundProjectConfig{}, fmt.Errorf("%w; run lineage enable <package-path-or-id> from a project first", ErrProjectConfigNotFound)
 		}
 		current = parent
 	}

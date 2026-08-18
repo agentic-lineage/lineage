@@ -34,10 +34,24 @@ func Discover(dir string) (Package, error) {
 	return pkg, nil
 }
 
+// InitPackage scaffolds a package directory: a lineage.yaml manifest plus
+// the standard skills/workflows/agents/policies/references/adapters
+// subdirectories. It is safe to call more than once against the same
+// directory. If a manifest already exists there, InitPackage leaves it
+// untouched rather than resetting it to defaults, so re-running `lineage
+// package init` never silently discards a maintainer's version bump,
+// description edit, or other manifest changes.
 func InitPackage(dir, name string) error {
-	manifest := DefaultManifest(name)
-	if err := SaveManifest(dir, manifest); err != nil {
-		return err
+	manifestPath := filepath.Join(dir, ManifestFileName)
+	switch _, err := os.Stat(manifestPath); {
+	case err == nil:
+		// Manifest already present; nothing to do here.
+	case os.IsNotExist(err):
+		if err := SaveManifest(dir, DefaultManifest(name)); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("check existing manifest %s: %w", manifestPath, err)
 	}
 
 	for _, child := range []string{"skills", "workflows", "agents", "policies", "references", "adapters"} {

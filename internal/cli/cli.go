@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -113,28 +114,68 @@ func runEnable(args []string, home string, stdout, stderr io.Writer) error {
 		fmt.Fprintln(stderr, err)
 		return err
 	}
+
+	// Reuse the project config an enclosing `lineage run` would find (it
+	// walks up parent directories), rather than always looking at cwd. This
+	// keeps `enable` and `run` agreeing on where "the project" is: enabling
+	// a package from inside a subdirectory of an already-initialized
+	// project must update that project's existing root config, not fork a
+	// second, shadow .lineage/config.yaml next to cwd.
+	projectRoot := cwd
 	configPath := config.ProjectConfigPath(cwd)
 	cfg := config.DefaultProjectConfig()
-	if loaded, err := config.LoadProjectConfig(configPath); err == nil {
-		cfg = loaded
-	} else if !os.IsNotExist(err) {
+	if found, err := config.FindProjectConfig(cwd); err == nil {
+		projectRoot = found.Root
+		configPath = found.Path
+		cfg = found.Config
+	} else if !errors.Is(err, config.ErrProjectConfigNotFound) {
 		fmt.Fprintln(stderr, err)
 		return err
 	}
 
 	ref := args[0]
-	if _, err := packages.ResolveReference(home, cfg.Workspace, cwd, ref); err != nil {
+
+	// A "./" or "../" style ref is relative to where the user typed it
+	// (cwd), matching the documented `lineage enable ./resume-workflow`
+	// usage. A bare name is a lookup by id against the project/user/
+	// workspace package search path, which is anchored at the project
+	// root. Resolve each the way it's meant, so a relative ref keeps
+	// pointing at the exact directory the user meant even when cwd is a
+	// subdirectory of a project that was already initialized higher up.
+	resolveRoot := projectRoot
+	if filepath.IsAbs(ref) || strings.HasPrefix(ref, ".") {
+		resolveRoot = cwd
+	}
+	resolvedPath, err := packages.ResolveReference(home, cfg.Workspace, resolveRoot, ref)
+	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return err
 	}
-	if !contains(cfg.EnabledPackages, ref) {
-		cfg.EnabledPackages = append(cfg.EnabledPackages, ref)
+
+	// The config we're about to save lives at the project root, and
+	// `lineage run` later resolves every enabled_packages entry relative to
+	// that same root. Store relative refs re-expressed against projectRoot
+	// so they still resolve correctly, instead of the literal string the
+	// user typed relative to cwd.
+	storedRef := ref
+	if strings.HasPrefix(ref, ".") && resolveRoot != projectRoot {
+		if rel, relErr := filepath.Rel(projectRoot, resolvedPath); relErr == nil {
+			rel = filepath.ToSlash(rel)
+			if !strings.HasPrefix(rel, ".") {
+				rel = "./" + rel
+			}
+			storedRef = rel
+		}
+	}
+
+	if !contains(cfg.EnabledPackages, storedRef) {
+		cfg.EnabledPackages = append(cfg.EnabledPackages, storedRef)
 	}
 	if err := config.SaveProjectConfig(configPath, cfg); err != nil {
 		fmt.Fprintln(stderr, err)
 		return err
 	}
-	fmt.Fprintf(stdout, "enabled package %s in %s\n", ref, configPath)
+	fmt.Fprintf(stdout, "enabled package %s in %s\n", storedRef, configPath)
 	return nil
 }
 
@@ -147,18 +188,7 @@ func runProvider(ctx context.Context, args []string, home string, stdout, stderr
 	}
 
 	providerName := args[0]
-	dryRun := false
-	providerArgs := []string{}
-	for _, arg := range args[1:] {
-		if arg == "--dry-run" {
-			dryRun = true
-			continue
-		}
-		if arg == "--" {
-			continue
-		}
-		providerArgs = append(providerArgs, arg)
-	}
+	dryRun, providerArgs := parseRunArgs(args[1:])
 
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -209,6 +239,43 @@ Usage:
   lineage run <claude|codex> [--dry-run] [-- provider args...]
   lineage install-shims
 `))
+}
+
+// parseRunArgs splits the arguments following `lineage run <provider>` into
+// lineage's own --dry-run flag and the args that should be forwarded to the
+// wrapped provider. A bare "--" marks the boundary explicitly: everything
+// before it is scanned for lineage flags, everything after it is passed
+// through to the provider verbatim, even if it happens to collide with a
+// lineage flag name (for example a provider's own --dry-run flag). Without
+// "--", the whole argument list is scanned for lineage flags, matching the
+// simple common case of `lineage run claude --dry-run`.
+func parseRunArgs(args []string) (dryRun bool, providerArgs []string) {
+	providerArgs = []string{}
+
+	sep := -1
+	for i, arg := range args {
+		if arg == "--" {
+			sep = i
+			break
+		}
+	}
+
+	scan := args
+	var passthrough []string
+	if sep >= 0 {
+		scan = args[:sep]
+		passthrough = args[sep+1:]
+	}
+
+	for _, arg := range scan {
+		if arg == "--dry-run" {
+			dryRun = true
+			continue
+		}
+		providerArgs = append(providerArgs, arg)
+	}
+	providerArgs = append(providerArgs, passthrough...)
+	return dryRun, providerArgs
 }
 
 func contains(values []string, target string) bool {
