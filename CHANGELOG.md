@@ -47,5 +47,10 @@ All notable changes to Lineage will be documented here.
   credential-shaped files and content (`.env`, private key files/headers,
   AWS/GitHub token shapes) across a package directory. Findings report a
   path and reason only — never the matched value — so results are safe to
-  print. Not yet wired into a command; `lineage package validate` will
-  surface it next.
+  print.
+- Added `lineage package validate <path>`: runs the manifest schema check,
+  export-authority check, entrypoint path safety, and secret scan against
+  a package without enabling it or writing anything, printing the
+  resolved digest and declared capabilities. Unlike normal package
+  resolution, it collects every problem found rather than stopping at the
+  first one, and exits non-zero on failure.

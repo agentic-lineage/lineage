@@ -80,18 +80,11 @@ func applyExportAuthority(kind string, declared, discovered []string) ([]string,
 		return discovered, nil
 	}
 
-	discoveredSet := make(map[string]bool, len(discovered))
-	for _, name := range discovered {
-		discoveredSet[name] = true
+	if missing := missingDeclared(declared, discovered); len(missing) > 0 {
+		return nil, fmt.Errorf("manifest declares %s %q but it was not found", kind, missing[0])
 	}
 
-	result := make([]string, 0, len(declared))
-	for _, name := range declared {
-		if !discoveredSet[name] {
-			return nil, fmt.Errorf("manifest declares %s %q but it was not found", kind, name)
-		}
-		result = append(result, name)
-	}
+	result := append([]string(nil), declared...)
 	sort.Strings(result)
 	return result, nil
 }

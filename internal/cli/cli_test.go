@@ -108,3 +108,56 @@ func TestEnableRejectsUnsatisfiedRequiredSkill(t *testing.T) {
 		t.Fatal("expected no config written when enable fails validation")
 	}
 }
+
+func TestPackageValidatePasses(t *testing.T) {
+	root := t.TempDir()
+	pkgDir := filepath.Join(root, "clean-pack")
+	if err := packages.InitPackage(pkgDir, "clean-pack"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(pkgDir, "skills", "review"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pkgDir, "skills", "review", "SKILL.md"), []byte("# Review"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if err := Execute(nil, []string{"package", "validate", pkgDir}, &stdout, &stderr); err != nil {
+		t.Fatalf("validate error = %v stderr=%s", err, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "result: PASS") {
+		t.Fatalf("stdout = %q, want PASS", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "digest: sha256:") {
+		t.Fatalf("stdout = %q, want a printed digest", stdout.String())
+	}
+}
+
+func TestPackageValidateFailsAndReportsErrors(t *testing.T) {
+	root := t.TempDir()
+	pkgDir := filepath.Join(root, "broken-pack")
+	if err := packages.InitPackage(pkgDir, "broken-pack"); err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := packages.LoadManifest(pkgDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest.Exports.Agents = []string{"missing.md"}
+	if err := packages.SaveManifest(pkgDir, manifest); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	err = Execute(nil, []string{"package", "validate", pkgDir}, &stdout, &stderr)
+	if err == nil {
+		t.Fatal("validate error = nil, want error for a failing package")
+	}
+	if !strings.Contains(stdout.String(), "result: FAIL") {
+		t.Fatalf("stdout = %q, want FAIL", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "missing.md") {
+		t.Fatalf("stdout = %q, want it to name the missing export", stdout.String())
+	}
+}

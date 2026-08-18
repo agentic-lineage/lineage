@@ -86,20 +86,78 @@ func runInit(args []string, home string, stdout, stderr io.Writer) error {
 }
 
 func runPackage(args []string, stdout, stderr io.Writer) error {
-	if len(args) != 2 || args[0] != "init" {
-		err := fmt.Errorf("usage: lineage package init <name>")
+	if len(args) != 2 {
+		err := fmt.Errorf("usage: lineage package init <name> | lineage package validate <path>")
 		fmt.Fprintln(stderr, err)
 		return err
 	}
 
-	name := args[1]
-	dir := filepath.Clean(name)
-	if err := packages.InitPackage(dir, filepath.Base(name)); err != nil {
+	switch args[0] {
+	case "init":
+		name := args[1]
+		dir := filepath.Clean(name)
+		if err := packages.InitPackage(dir, filepath.Base(name)); err != nil {
+			fmt.Fprintln(stderr, err)
+			return err
+		}
+		fmt.Fprintf(stdout, "initialized package %s\n", dir)
+		return nil
+	case "validate":
+		return runPackageValidate(filepath.Clean(args[1]), stdout, stderr)
+	default:
+		err := fmt.Errorf("unknown package command %q", args[0])
 		fmt.Fprintln(stderr, err)
 		return err
 	}
-	fmt.Fprintf(stdout, "initialized package %s\n", dir)
+}
+
+func runPackageValidate(dir string, stdout, stderr io.Writer) error {
+	report, err := packages.Validate(dir)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+
+	fmt.Fprintf(stdout, "package: %s@%s (schema %d)\n", report.Manifest.Name, report.Manifest.Version, report.Manifest.Schema)
+	fmt.Fprintf(stdout, "digest: %s\n", emptyValue(report.Digest))
+	fmt.Fprintf(stdout, "capabilities:\n")
+	fmt.Fprintf(stdout, "  filesystem.read: %s\n", listValue(report.Manifest.Capabilities.Filesystem.Read))
+	fmt.Fprintf(stdout, "  network: %s\n", listValue(report.Manifest.Capabilities.Network))
+
+	if len(report.Notes) > 0 {
+		fmt.Fprintf(stdout, "notes:\n")
+		for _, note := range report.Notes {
+			fmt.Fprintf(stdout, "  - %s\n", note)
+		}
+	}
+
+	if !report.Passed() {
+		fmt.Fprintf(stdout, "errors:\n")
+		for _, e := range report.Errors {
+			fmt.Fprintf(stdout, "  - %s\n", e)
+		}
+		fmt.Fprintf(stdout, "result: FAIL\n")
+		err := fmt.Errorf("package validation failed with %d error(s)", len(report.Errors))
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+
+	fmt.Fprintf(stdout, "result: PASS\n")
 	return nil
+}
+
+func listValue(values []string) string {
+	if len(values) == 0 {
+		return "none"
+	}
+	return strings.Join(values, ", ")
+}
+
+func emptyValue(value string) string {
+	if value == "" {
+		return "none"
+	}
+	return value
 }
 
 func runEnable(args []string, home string, stdout, stderr io.Writer) error {
@@ -251,6 +309,7 @@ Usage:
   lineage init user
   lineage init workspace <name>
   lineage package init <name>
+  lineage package validate <path>
   lineage enable <package-path-or-id>
   lineage run <claude|codex> [--dry-run] [-- provider args...]
   lineage install-shims
