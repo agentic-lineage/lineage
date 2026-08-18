@@ -102,6 +102,8 @@ The source follows the standard Go layout:
 - `internal/` contains runtime, package, config, provider, and shim code.
 - `.agents/skills` contains repository-native contributor skills for consistent agent-assisted development.
 
+Important project decisions are recorded in [docs/decisions](docs/decisions/README.md).
+
 ## License
 
 MIT
