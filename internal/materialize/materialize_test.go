@@ -14,8 +14,11 @@ func TestApplyStagesSkillsAndWritesContextFile(t *testing.T) {
 	root := t.TempDir()
 	pkg := buildTestPackage(t, "review-pack", "review")
 
-	adapter := provider.Provider{Name: "claude", SkillsDir: filepath.Join(".claude", "skills"), ContextFile: "CLAUDE.md"}
-	if err := Apply(root, adapter, []packages.Package{pkg}); err != nil {
+	claude, err := provider.Get("claude")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(root, claude, []packages.Package{pkg}); err != nil {
 		t.Fatalf("Apply() error = %v", err)
 	}
 
@@ -31,6 +34,68 @@ func TestApplyStagesSkillsAndWritesContextFile(t *testing.T) {
 	content := string(contextData)
 	if !containsAll(content, beginMarker, endMarker, "review-pack@0.1.0") {
 		t.Fatalf("CLAUDE.md missing expected content:\n%s", content)
+	}
+}
+
+func TestApplyStagesSkillsForCodexAdapter(t *testing.T) {
+	root := t.TempDir()
+	pkg := buildTestPackage(t, "review-pack", "review")
+	codex, err := provider.Get("codex")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Apply(root, codex, []packages.Package{pkg}); err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+
+	skillFile := filepath.Join(root, ".agents", "skills", "review-pack-review", "SKILL.md")
+	if _, err := os.Stat(skillFile); err != nil {
+		t.Fatalf("expected staged skill at %s: %v", skillFile, err)
+	}
+
+	contextData, err := os.ReadFile(filepath.Join(root, "AGENTS.md"))
+	if err != nil {
+		t.Fatalf("read AGENTS.md: %v", err)
+	}
+	content := string(contextData)
+	if !containsAll(content, beginMarker, endMarker, "review-pack@0.1.0") {
+		t.Fatalf("AGENTS.md missing expected content:\n%s", content)
+	}
+}
+
+func TestApplyKeepsProvidersIsolated(t *testing.T) {
+	root := t.TempDir()
+	pkg := buildTestPackage(t, "review-pack", "review")
+	claude, err := provider.Get("claude")
+	if err != nil {
+		t.Fatal(err)
+	}
+	codex, err := provider.Get("codex")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Apply(root, claude, []packages.Package{pkg}); err != nil {
+		t.Fatalf("Apply(claude) error = %v", err)
+	}
+	if err := Apply(root, codex, []packages.Package{pkg}); err != nil {
+		t.Fatalf("Apply(codex) error = %v", err)
+	}
+
+	// Disabling everything for one provider must not touch the other
+	// provider's staged content or state.
+	if err := Apply(root, codex, nil); err != nil {
+		t.Fatalf("Apply(codex, none) error = %v", err)
+	}
+
+	claudeSkill := filepath.Join(root, ".claude", "skills", "review-pack-review")
+	if _, err := os.Stat(claudeSkill); err != nil {
+		t.Fatalf("expected claude skill to remain staged: %v", err)
+	}
+	codexSkill := filepath.Join(root, ".agents", "skills", "review-pack-review")
+	if _, err := os.Stat(codexSkill); !os.IsNotExist(err) {
+		t.Fatalf("expected codex skill removed, stat err = %v", err)
 	}
 }
 

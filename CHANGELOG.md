@@ -66,3 +66,8 @@ All notable changes to Lineage will be documented here.
   reflects the current enabled-package set exactly, via a per-provider
   `.lineage/materialized-<provider>.json` state file) and is skipped
   entirely on `--dry-run`.
+- `lineage run codex` materializes the same way, into
+  `.agents/skills/<pkg>-<skill>/` and a generated section in
+  `AGENTS.md`. Claude and Codex materialization stay isolated from
+  each other (separate state files, separate staged directories) so
+  running one provider never disturbs the other's staged content.
