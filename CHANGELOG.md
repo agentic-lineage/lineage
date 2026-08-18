@@ -59,3 +59,10 @@ All notable changes to Lineage will be documented here.
   content. `internal/runtime` and the CLI's usage text consult it instead
   of hardcoding `claude`/`codex`, so adding a provider is a one-entry
   change in one file rather than a hunt through the core runtime.
+- `lineage run claude` now materializes enabled packages for Claude Code:
+  skills are staged into `.claude/skills/<pkg>-<skill>/` and a generated
+  section in `CLAUDE.md` lists active packages, agents, policies, and
+  workflows. Materialization is idempotent and reversible (re-running
+  reflects the current enabled-package set exactly, via a per-provider
+  `.lineage/materialized-<provider>.json` state file) and is skipped
+  entirely on `--dry-run`.

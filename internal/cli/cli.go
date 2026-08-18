@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/lineage-dev/lineage/internal/config"
+	"github.com/lineage-dev/lineage/internal/materialize"
 	"github.com/lineage-dev/lineage/internal/packages"
 	"github.com/lineage-dev/lineage/internal/provider"
 	"github.com/lineage-dev/lineage/internal/runtime"
@@ -279,6 +280,17 @@ func runProvider(ctx context.Context, args []string, home string, stdout, stderr
 		fmt.Fprint(stdout, plan.DryRunString())
 		return nil
 	}
+
+	adapter, err := provider.Get(providerName)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+	if err := materialize.Apply(plan.ProjectRoot, adapter, plan.Packages); err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+
 	if err := provider.Launch(plan.ProviderPlan); err != nil {
 		fmt.Fprintln(stderr, err)
 		return err
