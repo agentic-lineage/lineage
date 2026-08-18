@@ -32,6 +32,12 @@ go run ./cmd/lineage --help
 - Changes reach `master` only after they have been reviewed and are ready for a stable release point.
 - Protected branches should require tests to pass and owner approval before merge.
 
+## Lean Planning
+
+Lineage uses goal-based milestones rather than date-based milestones. A milestone represents a product learning goal, such as proving safe package round trips or receiver setup.
+
+Keep labels minimal. Use labels for important signals like `bug`, `enhancement`, `documentation`, `security`, `critical`, or `needs:decision`; use milestones and the project board for planning.
+
 ## Pull Requests
 
 Use the pull request template and include verification output. Every PR must link an assigned issue. PRs without a linked issue should not be reviewed except for maintainer-only housekeeping changes.

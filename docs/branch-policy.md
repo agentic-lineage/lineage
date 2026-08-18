@@ -32,3 +32,7 @@ Apply these protections to both `master` and `develop`:
 - Require conversation resolution before merging.
 
 The test workflow runs for pull requests targeting `develop` and pushes to `develop` or `master`.
+
+## Planning Model
+
+Use goal-based milestones instead of date-based milestones. Labels should stay lightweight; day-to-day planning belongs in the GitHub Project board and milestone views.
