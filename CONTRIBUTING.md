@@ -17,6 +17,10 @@ go run ./cmd/lineage --help
 - Do not add code or docs that encourage sharing secrets, credentials, provider login state, or private machine state.
 - Add tests for package discovery, config changes, launch planning, and any safety checks you touch.
 
+## Agent-Assisted Development
+
+Repository skills in `.agents/skills` are Lineage guardrails, not generic engineering manuals. Use strong external/domain skills for Go, CLI design, security review, and code review when available, then apply the Lineage guardrails to keep work provider-neutral, deterministic, inspectable, permission-gated, and public-safe.
+
 ## Issue Ownership
 
 - Assign an issue to yourself before starting work.
