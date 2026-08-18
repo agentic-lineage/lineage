@@ -8,6 +8,7 @@ Closes #
 
 - [ ] The linked issue is assigned to me.
 - [ ] This PR targets `develop`.
+- [ ] This PR is not ready for review until the linked issue and test plan are complete.
 
 ## Package Impact
 
@@ -27,11 +28,19 @@ Closes #
 
 ## Verification
 
-Paste the commands or checks you ran:
+List the relevant test cases added or updated, then paste the commands or checks you ran.
+
+Relevant test cases:
+
+- 
 
 ```text
 go test ./...
 ```
+
+If this PR does not need automated tests, explain why:
+
+- 
 
 ## Notes For Reviewers
 

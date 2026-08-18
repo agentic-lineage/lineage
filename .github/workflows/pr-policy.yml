@@ -1,0 +1,69 @@
+name: PR Policy
+
+on:
+  pull_request:
+    branches: [develop]
+    types: [opened, edited, reopened, synchronize, ready_for_review]
+
+permissions:
+  pull-requests: read
+  contents: read
+
+jobs:
+  policy:
+    name: PR Policy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate PR issue link and test plan
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_BASE: ${{ github.event.pull_request.base.ref }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+          import sys
+
+          body = os.environ.get("PR_BODY") or ""
+          base = os.environ.get("PR_BASE") or ""
+          errors = []
+
+          if base != "develop":
+              errors.append("PR must target develop.")
+
+          linked_issue = re.search(r"(?im)\b(closes|fixes|resolves)\s+#\d+\b", body)
+          if not linked_issue:
+              errors.append("PR body must link an issue with `Closes #123`, `Fixes #123`, or `Resolves #123`.")
+
+          relevant_tests = re.search(
+              r"(?is)Relevant test cases:\s*(.+?)(?:```|If this PR does not need automated tests|## Notes For Reviewers|\Z)",
+              body,
+          )
+          tests_text = relevant_tests.group(1).strip() if relevant_tests else ""
+          has_test_case = bool(re.search(r"(?m)^-\s+\S+", tests_text))
+
+          no_test_reason = re.search(
+              r"(?is)If this PR does not need automated tests, explain why:\s*(.+?)(?:## Notes For Reviewers|\Z)",
+              body,
+          )
+          reason_text = no_test_reason.group(1).strip() if no_test_reason else ""
+          has_no_test_reason = bool(re.search(r"(?m)^-\s+\S+", reason_text))
+
+          command_block = re.search(r"(?is)```text\s*(.+?)```", body)
+          commands = command_block.group(1).strip() if command_block else ""
+          has_go_test = "go test ./..." in commands
+
+          if not (has_test_case or has_no_test_reason):
+              errors.append("PR must list relevant test cases added/updated, or explain why automated tests do not apply.")
+
+          if has_test_case and not has_go_test:
+              errors.append("PR with test changes must include `go test ./...` in Verification.")
+
+          if errors:
+              print("PR policy failed:")
+              for error in errors:
+                  print(f"- {error}")
+              sys.exit(1)
+
+          print("PR policy passed.")
+          PY
