@@ -71,3 +71,10 @@ All notable changes to Lineage will be documented here.
   `AGENTS.md`. Claude and Codex materialization stay isolated from
   each other (separate state files, separate staged directories) so
   running one provider never disturbs the other's staged content.
+- `lineage run` now shows what materialization would create or change
+  and asks for confirmation the first time a given package set would
+  actually write anything, instead of writing files as a silent side
+  effect. Approve with `y`/`yes`, or skip the prompt with `--yes`/`-y`
+  for scripts. Re-running with an unchanged package set doesn't
+  re-prompt. `lineage.Execute` now takes a `stdin io.Reader` to support
+  this.

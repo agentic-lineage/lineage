@@ -52,13 +52,7 @@ func Apply(projectRoot string, adapter provider.Provider, pkgs []packages.Packag
 		return err
 	}
 
-	desired := map[string]string{} // relative skill dir -> absolute source dir
-	for _, pkg := range pkgs {
-		for _, skill := range pkg.Skills {
-			rel := filepath.Join(adapter.SkillsDir, pkg.Manifest.Name+"-"+skill)
-			desired[rel] = filepath.Join(pkg.Path, "skills", skill)
-		}
-	}
+	desired := desiredSkillDirs(adapter, pkgs)
 
 	for _, rel := range prev.SkillDirs {
 		if _, ok := desired[rel]; ok {
@@ -87,6 +81,54 @@ func Apply(projectRoot string, adapter provider.Provider, pkgs []packages.Packag
 	}
 
 	return saveState(projectRoot, adapter.Name, state{SkillDirs: written})
+}
+
+// NeedsApproval reports whether calling Apply with pkgs would change
+// anything on disk for this provider — a first-time materialization, or a
+// package/skill set that differs from what the last Apply call recorded.
+// It's used to gate materialization behind an explicit confirmation
+// without re-prompting on every run once a given package set has already
+// been approved and materialized.
+func NeedsApproval(projectRoot string, adapter provider.Provider, pkgs []packages.Package) (bool, error) {
+	prev, err := loadState(projectRoot, adapter.Name)
+	if err != nil {
+		return false, err
+	}
+
+	desired := desiredSkillDirs(adapter, pkgs)
+	desiredDirs := make([]string, 0, len(desired))
+	for rel := range desired {
+		desiredDirs = append(desiredDirs, rel)
+	}
+	sort.Strings(desiredDirs)
+
+	prevDirs := append([]string(nil), prev.SkillDirs...)
+	sort.Strings(prevDirs)
+
+	return !equalStrings(desiredDirs, prevDirs), nil
+}
+
+func desiredSkillDirs(adapter provider.Provider, pkgs []packages.Package) map[string]string {
+	desired := map[string]string{} // relative skill dir -> absolute source dir
+	for _, pkg := range pkgs {
+		for _, skill := range pkg.Skills {
+			rel := filepath.Join(adapter.SkillsDir, pkg.Manifest.Name+"-"+skill)
+			desired[rel] = filepath.Join(pkg.Path, "skills", skill)
+		}
+	}
+	return desired
+}
+
+func equalStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func loadState(projectRoot, providerName string) (state, error) {

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -17,7 +18,7 @@ import (
 	"github.com/lineage-dev/lineage/internal/shim"
 )
 
-func Execute(ctx context.Context, args []string, stdout, stderr io.Writer) error {
+func Execute(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	if len(args) == 0 {
 		printUsage(stdout)
 		return nil
@@ -37,7 +38,7 @@ func Execute(ctx context.Context, args []string, stdout, stderr io.Writer) error
 	case "enable":
 		return runEnable(args[1:], home, stdout, stderr)
 	case "run":
-		return runProvider(ctx, args[1:], home, stdout, stderr)
+		return runProvider(ctx, args[1:], home, stdin, stdout, stderr)
 	case "install-shims":
 		return runInstallShims(home, stdout, stderr)
 	case "help", "-h", "--help":
@@ -254,16 +255,16 @@ func runEnable(args []string, home string, stdout, stderr io.Writer) error {
 	return nil
 }
 
-func runProvider(ctx context.Context, args []string, home string, stdout, stderr io.Writer) error {
+func runProvider(ctx context.Context, args []string, home string, stdin io.Reader, stdout, stderr io.Writer) error {
 	_ = ctx
 	if len(args) == 0 {
-		err := fmt.Errorf("usage: lineage run <%s> [--dry-run] [-- provider args...]", providerNameList())
+		err := fmt.Errorf("usage: lineage run <%s> [--dry-run] [--yes] [-- provider args...]", providerNameList())
 		fmt.Fprintln(stderr, err)
 		return err
 	}
 
 	providerName := args[0]
-	dryRun, providerArgs := parseRunArgs(args[1:])
+	dryRun, autoApprove, providerArgs := parseRunArgs(args[1:])
 
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -286,6 +287,29 @@ func runProvider(ctx context.Context, args []string, home string, stdout, stderr
 		fmt.Fprintln(stderr, err)
 		return err
 	}
+
+	// Materialization writes files into the receiver's project (staged
+	// skills, a generated section in the provider's context file). Gate
+	// that write behind an explicit confirmation the first time it would
+	// change anything, so it's never a surprise side effect of `lineage
+	// run` - similar in spirit to how --dry-run already previews the
+	// launch plan. Once a given package set is approved and materialized,
+	// re-running with the same set doesn't need to ask again.
+	needsApproval, err := materialize.NeedsApproval(plan.ProjectRoot, adapter, plan.Packages)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+	if needsApproval && !autoApprove {
+		fmt.Fprintf(stdout, "lineage will make the following changes for %s:\n\n", providerName)
+		fmt.Fprint(stdout, plan.DryRunString())
+		fmt.Fprint(stdout, "\nProceed? [y/N] ")
+		if !confirm(stdin) {
+			fmt.Fprintln(stdout, "aborted: materialization was not approved")
+			return nil
+		}
+	}
+
 	if err := materialize.Apply(plan.ProjectRoot, adapter, plan.Packages); err != nil {
 		fmt.Fprintln(stderr, err)
 		return err
@@ -296,6 +320,22 @@ func runProvider(ctx context.Context, args []string, home string, stdout, stderr
 		return err
 	}
 	return nil
+}
+
+// confirm reads a single line from stdin and reports whether it's an
+// affirmative answer ("y" or "yes", case-insensitive). Anything else,
+// including EOF or a nil reader, is treated as a decline - approval must be
+// explicit.
+func confirm(stdin io.Reader) bool {
+	if stdin == nil {
+		return false
+	}
+	line, err := bufio.NewReader(stdin).ReadString('\n')
+	if err != nil && line == "" {
+		return false
+	}
+	answer := strings.ToLower(strings.TrimSpace(line))
+	return answer == "y" || answer == "yes"
 }
 
 func runInstallShims(home string, stdout, stderr io.Writer) error {
@@ -323,7 +363,7 @@ Usage:
   lineage package init <name>
   lineage package validate <path>
   lineage enable <package-path-or-id>
-  lineage run <%s> [--dry-run] [-- provider args...]
+  lineage run <%s> [--dry-run] [--yes] [-- provider args...]
   lineage install-shims
 `, providerNameList())))
 }
@@ -341,14 +381,14 @@ func providerNameList() string {
 }
 
 // parseRunArgs splits the arguments following `lineage run <provider>` into
-// lineage's own --dry-run flag and the args that should be forwarded to the
-// wrapped provider. A bare "--" marks the boundary explicitly: everything
-// before it is scanned for lineage flags, everything after it is passed
-// through to the provider verbatim, even if it happens to collide with a
-// lineage flag name (for example a provider's own --dry-run flag). Without
-// "--", the whole argument list is scanned for lineage flags, matching the
-// simple common case of `lineage run claude --dry-run`.
-func parseRunArgs(args []string) (dryRun bool, providerArgs []string) {
+// lineage's own --dry-run/--yes flags and the args that should be forwarded
+// to the wrapped provider. A bare "--" marks the boundary explicitly:
+// everything before it is scanned for lineage flags, everything after it is
+// passed through to the provider verbatim, even if it happens to collide
+// with a lineage flag name (for example a provider's own --dry-run flag).
+// Without "--", the whole argument list is scanned for lineage flags,
+// matching the simple common case of `lineage run claude --dry-run`.
+func parseRunArgs(args []string) (dryRun, autoApprove bool, providerArgs []string) {
 	providerArgs = []string{}
 
 	sep := -1
@@ -371,10 +411,14 @@ func parseRunArgs(args []string) (dryRun bool, providerArgs []string) {
 			dryRun = true
 			continue
 		}
+		if arg == "--yes" || arg == "-y" {
+			autoApprove = true
+			continue
+		}
 		providerArgs = append(providerArgs, arg)
 	}
 	providerArgs = append(providerArgs, passthrough...)
-	return dryRun, providerArgs
+	return dryRun, autoApprove, providerArgs
 }
 
 func contains(values []string, target string) bool {

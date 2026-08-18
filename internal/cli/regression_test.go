@@ -54,7 +54,7 @@ func TestEnableFromSubdirectoryUsesProjectRoot(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	if err := Execute(nil, []string{"enable", "./local-pack"}, &stdout, &stderr); err != nil {
+	if err := Execute(nil, []string{"enable", "./local-pack"}, nil, &stdout, &stderr); err != nil {
 		t.Fatalf("enable error = %v stderr=%s", err, stderr.String())
 	}
 
@@ -114,7 +114,7 @@ func TestEnableFromProjectRootIsUnaffected(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	if err := Execute(nil, []string{"enable", "./agent-pack"}, &stdout, &stderr); err != nil {
+	if err := Execute(nil, []string{"enable", "./agent-pack"}, nil, &stdout, &stderr); err != nil {
 		t.Fatalf("enable error = %v stderr=%s", err, stderr.String())
 	}
 
@@ -169,7 +169,7 @@ func TestRunPassesFlagsAfterDoubleDashToProvider(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	// Everything after "--" is meant for the provider, including a literal
 	// "--dry-run" flag that the wrapped agent itself understands.
-	if err := Execute(nil, []string{"run", "claude", "--", "--dry-run"}, &stdout, &stderr); err != nil {
+	if err := Execute(nil, []string{"run", "claude", "--", "--dry-run"}, nil, &stdout, &stderr); err != nil {
 		t.Fatalf("run error = %v stderr=%s", err, stderr.String())
 	}
 
@@ -187,16 +187,35 @@ func TestRunPassesFlagsAfterDoubleDashToProvider(t *testing.T) {
 // covering both the no-"--" shorthand and the explicit separator form.
 func TestParseRunArgs(t *testing.T) {
 	cases := []struct {
-		name        string
-		args        []string
-		wantDryRun  bool
-		wantForward []string
+		name            string
+		args            []string
+		wantDryRun      bool
+		wantAutoApprove bool
+		wantForward     []string
 	}{
 		{
 			name:        "dry-run without separator",
 			args:        []string{"--dry-run"},
 			wantDryRun:  true,
 			wantForward: []string{},
+		},
+		{
+			name:            "yes without separator",
+			args:            []string{"--yes"},
+			wantAutoApprove: true,
+			wantForward:     []string{},
+		},
+		{
+			name:            "short -y flag",
+			args:            []string{"-y"},
+			wantAutoApprove: true,
+			wantForward:     []string{},
+		},
+		{
+			name:            "provider's own --yes after separator is preserved",
+			args:            []string{"--", "--yes"},
+			wantAutoApprove: false,
+			wantForward:     []string{"--yes"},
 		},
 		{
 			name:        "plain args without separator",
@@ -226,9 +245,12 @@ func TestParseRunArgs(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			dryRun, forward := parseRunArgs(tc.args)
+			dryRun, autoApprove, forward := parseRunArgs(tc.args)
 			if dryRun != tc.wantDryRun {
 				t.Fatalf("dryRun = %v, want %v", dryRun, tc.wantDryRun)
+			}
+			if autoApprove != tc.wantAutoApprove {
+				t.Fatalf("autoApprove = %v, want %v", autoApprove, tc.wantAutoApprove)
 			}
 			if len(forward) != len(tc.wantForward) {
 				t.Fatalf("forward = %#v, want %#v", forward, tc.wantForward)

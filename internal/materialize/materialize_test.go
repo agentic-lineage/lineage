@@ -10,6 +10,57 @@ import (
 	"github.com/lineage-dev/lineage/internal/provider"
 )
 
+func TestNeedsApprovalOnFirstRun(t *testing.T) {
+	root := t.TempDir()
+	pkg := buildTestPackage(t, "review-pack", "review")
+	adapter := provider.Provider{Name: "claude", SkillsDir: filepath.Join(".claude", "skills"), ContextFile: "CLAUDE.md"}
+
+	needs, err := NeedsApproval(root, adapter, []packages.Package{pkg})
+	if err != nil {
+		t.Fatalf("NeedsApproval() error = %v", err)
+	}
+	if !needs {
+		t.Fatal("NeedsApproval() = false on first run, want true")
+	}
+}
+
+func TestNeedsApprovalFalseAfterMatchingApply(t *testing.T) {
+	root := t.TempDir()
+	pkg := buildTestPackage(t, "review-pack", "review")
+	adapter := provider.Provider{Name: "claude", SkillsDir: filepath.Join(".claude", "skills"), ContextFile: "CLAUDE.md"}
+
+	if err := Apply(root, adapter, []packages.Package{pkg}); err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+
+	needs, err := NeedsApproval(root, adapter, []packages.Package{pkg})
+	if err != nil {
+		t.Fatalf("NeedsApproval() error = %v", err)
+	}
+	if needs {
+		t.Fatal("NeedsApproval() = true for an already-materialized, unchanged package set, want false")
+	}
+}
+
+func TestNeedsApprovalTrueWhenPackageSetChanges(t *testing.T) {
+	root := t.TempDir()
+	pkg := buildTestPackage(t, "review-pack", "review")
+	adapter := provider.Provider{Name: "claude", SkillsDir: filepath.Join(".claude", "skills"), ContextFile: "CLAUDE.md"}
+
+	if err := Apply(root, adapter, []packages.Package{pkg}); err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+
+	other := buildTestPackage(t, "other-pack", "other-skill")
+	needs, err := NeedsApproval(root, adapter, []packages.Package{pkg, other})
+	if err != nil {
+		t.Fatalf("NeedsApproval() error = %v", err)
+	}
+	if !needs {
+		t.Fatal("NeedsApproval() = false after adding a new package, want true")
+	}
+}
+
 func TestApplyStagesSkillsAndWritesContextFile(t *testing.T) {
 	root := t.TempDir()
 	pkg := buildTestPackage(t, "review-pack", "review")
