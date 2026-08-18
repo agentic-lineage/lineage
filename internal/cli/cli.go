@@ -306,9 +306,9 @@ func runProvider(ctx context.Context, args []string, home string, stdin io.Reade
 		fmt.Fprint(stdout, "\nProceed? [y/N] ")
 		if !confirm(stdin) {
 			fmt.Fprintln(stdout, "aborted: materialization was not approved")
-			return nil
+				return nil
+			}
 		}
-	}
 
 	if err := materialize.Apply(plan.ProjectRoot, adapter, plan.Packages); err != nil {
 		fmt.Fprintln(stderr, err)
