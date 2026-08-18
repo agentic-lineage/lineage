@@ -37,3 +37,9 @@ All notable changes to Lineage will be documented here.
 - Every discovered package now carries a stable `sha256` content digest
   (manifest + all content files, deterministic order), surfaced in
   `--dry-run` output alongside any declared capabilities.
+- Added `internal/packages.SafeJoin`, a path-traversal guard for any path
+  that comes from untrusted, package-controlled input (as opposed to a
+  path the user typed directly). `entrypoints.claude`/`entrypoints.codex`
+  are now validated against it at discovery time, and package content
+  digests refuse to follow a symlink rather than silently hashing
+  whatever it points at outside the package.

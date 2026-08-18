@@ -112,6 +112,29 @@ func TestComputeDigestStableAndSensitiveToContent(t *testing.T) {
 	}
 }
 
+func TestComputeDigestRejectsSymlinkedContent(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "symlink-pack")
+	if err := InitPackage(root, "symlink-pack"); err != nil {
+		t.Fatal(err)
+	}
+
+	outside := filepath.Join(t.TempDir(), "outside.txt")
+	if err := os.WriteFile(outside, []byte("secret"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	linkPath := filepath.Join(root, "skills", "review", "link.txt")
+	if err := os.MkdirAll(filepath.Dir(linkPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, linkPath); err != nil {
+		t.Skipf("symlinks unsupported on this platform: %v", err)
+	}
+
+	if _, err := ComputeDigest(root); err == nil {
+		t.Fatal("ComputeDigest() error = nil, want error for symlinked package content")
+	}
+}
+
 func TestResolveReferenceOrder(t *testing.T) {
 	tmp := t.TempDir()
 	home := filepath.Join(tmp, "home")

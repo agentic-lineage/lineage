@@ -35,6 +35,13 @@ func Discover(dir string) (Package, error) {
 		Manifest: manifest,
 	}
 
+	if err := validateEntrypoint(dir, "claude", manifest.Entrypoints.Claude); err != nil {
+		return Package{}, fmt.Errorf("%s: %w", dir, err)
+	}
+	if err := validateEntrypoint(dir, "codex", manifest.Entrypoints.Codex); err != nil {
+		return Package{}, fmt.Errorf("%s: %w", dir, err)
+	}
+
 	workflows, err := applyExportAuthority("workflow", manifest.Exports.Workflows, discoverNamesWithFile(filepath.Join(dir, "workflows"), "WORKFLOW.md"))
 	if err != nil {
 		return Package{}, fmt.Errorf("%s: %w", dir, err)
@@ -89,11 +96,28 @@ func applyExportAuthority(kind string, declared, discovered []string) ([]string,
 	return result, nil
 }
 
+// validateEntrypoint checks a manifest-declared entrypoint path (untrusted,
+// package-controlled input) stays within the package directory before
+// anything downstream ever reads it. An unset entrypoint is fine — the
+// field is optional.
+func validateEntrypoint(dir, provider, entrypoint string) error {
+	if entrypoint == "" {
+		return nil
+	}
+	if _, err := SafeJoin(dir, entrypoint); err != nil {
+		return fmt.Errorf("entrypoints.%s: %w", provider, err)
+	}
+	return nil
+}
+
 // ComputeDigest returns a stable "sha256:<hex>" content digest over a
 // package's manifest and every file in its standard content directories
 // (skills, workflows, agents, policies, references, adapters), hashed in
 // deterministic path order. Two packages with byte-identical content always
-// produce the same digest; any content change changes it.
+// produce the same digest; any content change changes it. A symlink
+// anywhere in those directories is rejected rather than followed, since
+// package content is untrusted and a symlink could otherwise pull
+// arbitrary file content from outside the package into the digest.
 func ComputeDigest(dir string) (string, error) {
 	h := sha256.New()
 
@@ -106,8 +130,18 @@ func ComputeDigest(dir string) (string, error) {
 	var files []string
 	for _, sub := range []string{"skills", "workflows", "agents", "policies", "references", "adapters"} {
 		root := filepath.Join(dir, sub)
-		_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-			if err != nil || d.IsDir() {
+		walkErr := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return nil
+			}
+			if d.Type()&fs.ModeSymlink != 0 {
+				rel, relErr := filepath.Rel(dir, path)
+				if relErr != nil {
+					rel = path
+				}
+				return fmt.Errorf("refusing to include symlink %s in digest", rel)
+			}
+			if d.IsDir() {
 				return nil
 			}
 			rel, relErr := filepath.Rel(dir, path)
@@ -117,6 +151,9 @@ func ComputeDigest(dir string) (string, error) {
 			files = append(files, filepath.ToSlash(rel))
 			return nil
 		})
+		if walkErr != nil {
+			return "", walkErr
+		}
 	}
 	sort.Strings(files)
 
