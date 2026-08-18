@@ -21,8 +21,8 @@ type Plan struct {
 }
 
 func BuildPlan(providerName, cwd, home string, args []string) (Plan, error) {
-	if providerName != "claude" && providerName != "codex" {
-		return Plan{}, fmt.Errorf("unknown provider %q", providerName)
+	if _, err := provider.Get(providerName); err != nil {
+		return Plan{}, err
 	}
 
 	found, err := config.FindProjectConfig(cwd)

@@ -49,3 +49,8 @@ All notable changes to Lineage will be documented here.
   path and reason only — never the matched value — so results are safe to
   print. Not yet wired into a command; `lineage package validate` will
   surface it next.
+- `internal/provider` now has a single provider registry (`Known`, `Get`,
+  `IsKnown`) naming every supported provider and where it reads staged
+  content. `internal/runtime` and the CLI's usage text consult it instead
+  of hardcoding `claude`/`codex`, so adding a provider is a one-entry
+  change in one file rather than a hunt through the core runtime.
