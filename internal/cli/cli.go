@@ -34,7 +34,7 @@ func Execute(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 	case "init":
 		return runInit(args[1:], home, stdout, stderr)
 	case "package":
-		return runPackage(args[1:], stdout, stderr)
+		return runPackage(args[1:], home, stdout, stderr)
 	case "enable":
 		return runEnable(args[1:], home, stdout, stderr)
 	case "run":
@@ -87,9 +87,9 @@ func runInit(args []string, home string, stdout, stderr io.Writer) error {
 	}
 }
 
-func runPackage(args []string, stdout, stderr io.Writer) error {
+func runPackage(args []string, home string, stdout, stderr io.Writer) error {
 	if len(args) < 2 {
-		err := fmt.Errorf("usage: lineage package init <name> | lineage package validate <path> | lineage package export <path> [-o file.tgz]")
+		err := fmt.Errorf("usage: lineage package init <name> | lineage package validate <path> | lineage package export <path> [-o file.tgz] | lineage package import <file.tgz> [--as name]")
 		fmt.Fprintln(stderr, err)
 		return err
 	}
@@ -118,11 +118,56 @@ func runPackage(args []string, stdout, stderr io.Writer) error {
 		return runPackageValidate(filepath.Clean(args[1]), stdout, stderr)
 	case "export":
 		return runPackageExport(args[1:], stdout, stderr)
+	case "import":
+		return runPackageImport(args[1:], home, stdout, stderr)
 	default:
 		err := fmt.Errorf("unknown package command %q", args[0])
 		fmt.Fprintln(stderr, err)
 		return err
 	}
+}
+
+func runPackageImport(args []string, home string, stdout, stderr io.Writer) error {
+	if len(args) < 1 {
+		err := fmt.Errorf("usage: lineage package import <file.tgz> [--as name]")
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+
+	archivePath := args[0]
+	asName := ""
+	for i := 1; i < len(args); i++ {
+		if args[i] == "--as" && i+1 < len(args) {
+			asName = args[i+1]
+			i++
+			continue
+		}
+		err := fmt.Errorf("usage: lineage package import <file.tgz> [--as name]")
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+
+	f, err := os.Open(archivePath)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+	defer f.Close()
+
+	destParent := config.UserPackagesDir(home)
+	if err := os.MkdirAll(destParent, 0o755); err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+
+	name, err := packages.Import(f, destParent, asName)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+
+	fmt.Fprintf(stdout, "imported package %s into %s\n", name, filepath.Join(destParent, name))
+	return nil
 }
 
 func runPackageExport(args []string, stdout, stderr io.Writer) error {
@@ -426,6 +471,7 @@ Usage:
   lineage package init <name>
   lineage package validate <path>
   lineage package export <path> [-o file.tgz]
+  lineage package import <file.tgz> [--as name]
   lineage enable <package-path-or-id>
   lineage run <%s> [--dry-run] [--yes] [-- provider args...]
   lineage install-shims

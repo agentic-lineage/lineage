@@ -354,3 +354,54 @@ func TestPackageExportRefusesInvalidPackage(t *testing.T) {
 		t.Fatal("expected no archive left behind when export fails")
 	}
 }
+
+func TestPackageExportThenImportRoundTrip(t *testing.T) {
+	tmp := t.TempDir()
+	home := filepath.Join(tmp, "home")
+	pkgDir := filepath.Join(tmp, "roundtrip-pack")
+	if err := packages.InitPackage(pkgDir, "roundtrip-pack"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(pkgDir, "skills", "review"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pkgDir, "skills", "review", "SKILL.md"), []byte("# Review"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	oldHome := os.Getenv(config.HomeEnv)
+	t.Setenv(config.HomeEnv, home)
+	defer t.Setenv(config.HomeEnv, oldHome)
+
+	archivePath := filepath.Join(tmp, "roundtrip-pack.tgz")
+	var stdout, stderr bytes.Buffer
+	if err := Execute(nil, []string{"package", "export", pkgDir, "-o", archivePath}, nil, &stdout, &stderr); err != nil {
+		t.Fatalf("export error = %v stderr=%s", err, stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if err := Execute(nil, []string{"package", "import", archivePath}, nil, &stdout, &stderr); err != nil {
+		t.Fatalf("import error = %v stderr=%s", err, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "imported package roundtrip-pack") {
+		t.Fatalf("import stdout = %q, want it to name the imported package", stdout.String())
+	}
+
+	importedDir := filepath.Join(config.UserPackagesDir(home), "roundtrip-pack")
+	if _, err := os.Stat(filepath.Join(importedDir, "skills", "review", "SKILL.md")); err != nil {
+		t.Fatalf("expected imported skill file: %v", err)
+	}
+
+	original, err := packages.Discover(pkgDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	imported, err := packages.Discover(importedDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if imported.Digest != original.Digest {
+		t.Fatalf("imported digest = %q, want %q", imported.Digest, original.Digest)
+	}
+}

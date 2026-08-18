@@ -84,3 +84,12 @@ All notable changes to Lineage will be documented here.
   checks as `lineage package validate` and refusing to export if any
   fail. Two exports of byte-identical package content always produce
   byte-identical archive bytes.
+- Added `lineage package import <file.tgz> [--as name]`: extracts an
+  exported archive into the user packages directory. The archive is
+  treated as untrusted input — every entry path is checked against
+  path traversal before anything is written, and the fully extracted
+  content is run through the same checks as `lineage package validate`
+  before it's kept, so a broken or unsafe archive is discarded rather
+  than installed. Never overwrites an existing package; use `--as` to
+  import under a different name. Export followed by import reproduces
+  the original package exactly, verified by matching content digests.
