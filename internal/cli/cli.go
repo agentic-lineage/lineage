@@ -198,7 +198,7 @@ func runEnable(args []string, home string, stdout, stderr io.Writer) error {
 func runProvider(ctx context.Context, args []string, home string, stdout, stderr io.Writer) error {
 	_ = ctx
 	if len(args) == 0 {
-		err := fmt.Errorf("usage: lineage run <claude|codex> [--dry-run] [-- provider args...]")
+		err := fmt.Errorf("usage: lineage run <%s> [--dry-run] [-- provider args...]", providerNameList())
 		fmt.Fprintln(stderr, err)
 		return err
 	}
@@ -244,7 +244,7 @@ func runInstallShims(home string, stdout, stderr io.Writer) error {
 }
 
 func printUsage(w io.Writer) {
-	fmt.Fprintln(w, strings.TrimSpace(`
+	fmt.Fprintln(w, strings.TrimSpace(fmt.Sprintf(`
 Lineage shareable agent runtime
 
 Usage:
@@ -252,9 +252,21 @@ Usage:
   lineage init workspace <name>
   lineage package init <name>
   lineage enable <package-path-or-id>
-  lineage run <claude|codex> [--dry-run] [-- provider args...]
+  lineage run <%s> [--dry-run] [-- provider args...]
   lineage install-shims
-`))
+`, providerNameList())))
+}
+
+// providerNameList returns every registered provider name, comma-separated,
+// for CLI usage messages — so adding a provider to internal/provider's
+// registry is enough to keep help text accurate, with no other file to edit.
+func providerNameList() string {
+	known := provider.Known()
+	names := make([]string, len(known))
+	for i, p := range known {
+		names[i] = p.Name
+	}
+	return strings.Join(names, "|")
 }
 
 // parseRunArgs splits the arguments following `lineage run <provider>` into

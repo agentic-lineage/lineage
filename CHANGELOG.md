@@ -37,3 +37,8 @@ All notable changes to Lineage will be documented here.
 - Every discovered package now carries a stable `sha256` content digest
   (manifest + all content files, deterministic order), surfaced in
   `--dry-run` output alongside any declared capabilities.
+- `internal/provider` now has a single provider registry (`Known`, `Get`,
+  `IsKnown`) naming every supported provider and where it reads staged
+  content. `internal/runtime` and the CLI's usage text consult it instead
+  of hardcoding `claude`/`codex`, so adding a provider is a one-entry
+  change in one file rather than a hunt through the core runtime.
