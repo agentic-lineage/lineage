@@ -45,7 +45,7 @@ An earlier version of this decision proposed a custom backend with its own blob 
 
 - Who holds the `LINEAGE_REGISTRY_TOKEN` used by the website against `agentic-lineage/published-artifacts` still needs to be settled and rotated on a schedule.
 - Publish is fully open for V1 (decision 6b) — no pre-vetting of who can claim a package name. If spam/abuse becomes real, the next lever is a lightweight allowlist (e.g. a file committed to the registry repo itself, so it still doesn't need a website redeploy to update) rather than reverting to admin-minted tokens.
-- The GitHub OAuth App backing `lineage login` needs to be registered (org: `agentic-lineage`, Device Flow enabled) and its Client ID compiled into the CLI.
+- ~~The GitHub OAuth App backing `lineage login` needs to be registered (org: `agentic-lineage`, Device Flow enabled) and its Client ID compiled into the CLI.~~ Done — registered, Device Flow enabled, Client ID compiled in. Still untested: a real human completing the browser approval step end to end (verified so far: device code request/response against the live endpoint, and the CLI's own prompt).
 - Write and security-review the actual bootstrap prompt text once the website's endpoints exist to fetch/inspect/enable against.
 - Revisit the deferred GoReleaser/`curl | sh` install path (#64) once npx-based install proves insufficient (e.g. environments without Node).
 - If a single shared registry repo becomes a namespace or scale problem, revisit per-package or per-publisher repos — the version/digest model above should not need to change if that happens.
