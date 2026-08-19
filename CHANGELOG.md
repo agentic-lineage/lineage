@@ -81,9 +81,9 @@ All notable changes to Lineage will be documented here.
 - Added `lineage package export <path> [-o file.tgz]`: produces a
   deterministic tar.gz archive (manifest + content directories, sorted
   order, normalized permissions and timestamps) after running the same
-	  checks as `lineage package validate` and refusing to export if any
-	  fail. Two exports of byte-identical package content always produce
-	  byte-identical archive bytes.
+  checks as `lineage package validate` and refusing to export if any
+  fail. Two exports of byte-identical package content always produce
+  byte-identical archive bytes.
 - Added `lineage package import <file.tgz> [--as name]`: extracts an
   exported archive into the user packages directory. The archive is
   treated as untrusted input — every entry path is checked against
@@ -93,3 +93,8 @@ All notable changes to Lineage will be documented here.
   than installed. Never overwrites an existing package; use `--as` to
   import under a different name. Export followed by import reproduces
   the original package exactly, verified by matching content digests.
+- Vendored `gopkg.in/yaml.v3`, Lineage's one dependency, under
+  `vendor/`. `go build`/`go test ./...` no longer need network access
+  to `proxy.golang.org` on a fresh checkout — Go automatically prefers
+  the vendored copy whenever `vendor/modules.txt` is present and
+  consistent with `go.mod`.
