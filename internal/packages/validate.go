@@ -44,7 +44,7 @@ func Validate(dir string) (ValidateReport, error) {
 	for _, missing := range missingDeclared(manifest.Exports.Agents, discoverEntryNames(filepath.Join(dir, "agents"))) {
 		report.Errors = append(report.Errors, fmt.Sprintf("manifest declares agent %q but it was not found", missing))
 	}
-	for _, missing := range missingDeclared(manifest.Exports.Workflows, discoverNamesWithFile(filepath.Join(dir, "workflows"), "WORKFLOW.md")) {
+	for _, missing := range missingDeclared(manifest.Exports.Workflows, discoverNamesWithFile(filepath.Join(dir, "workflows"), WorkflowFileName)) {
 		report.Errors = append(report.Errors, fmt.Sprintf("manifest declares workflow %q but it was not found", missing))
 	}
 
@@ -63,6 +63,17 @@ func Validate(dir string) (ValidateReport, error) {
 	for _, required := range manifest.Requires.Skills {
 		if !skillSet[required] {
 			report.Notes = append(report.Notes, fmt.Sprintf("requires skill %q, not provided by this package alone — must come from another enabled package", required))
+		}
+	}
+
+	for _, wfName := range discoverNamesWithFile(filepath.Join(dir, "workflows"), WorkflowFileName) {
+		wf, err := LoadWorkflow(dir, wfName)
+		if err != nil {
+			report.Errors = append(report.Errors, fmt.Sprintf("workflow %q: %v", wfName, err))
+			continue
+		}
+		for _, missing := range missingDeclared(wf.Steps, discoveredSkills) {
+			report.Errors = append(report.Errors, fmt.Sprintf("workflow %q references skill %q, which was not found in this package", wfName, missing))
 		}
 	}
 

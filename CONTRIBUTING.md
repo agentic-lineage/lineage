@@ -9,6 +9,8 @@ go test ./...
 go run ./cmd/lineage --help
 ```
 
+No network access is required: Lineage's one dependency (`gopkg.in/yaml.v3`) is vendored under `vendor/`, and Go automatically prefers it over the module proxy whenever `vendor/modules.txt` is present and consistent with `go.mod`. If you add or bump a dependency, run `go mod vendor` afterward and commit the resulting `vendor/` changes alongside `go.mod`/`go.sum`.
+
 ## Development Guidelines
 
 - Keep the runtime provider-neutral unless you are working inside an explicit provider boundary.

@@ -36,6 +36,21 @@ func statePath(projectRoot, providerName string) string {
 	return filepath.Join(projectRoot, stateDirName, "materialized-"+providerName+".json")
 }
 
+// HasState reports whether a provider has ever been materialized for this
+// project — i.e. whether Apply has run for it before. Used to decide which
+// providers need re-materializing after a package is disabled, without
+// creating a state file for a provider that was never used.
+func HasState(projectRoot, providerName string) (bool, error) {
+	_, err := os.Stat(statePath(projectRoot, providerName))
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, err
+}
+
 // Apply stages every skill from pkgs into adapter.SkillsDir and refreshes
 // the generated section of adapter.ContextFile describing active packages,
 // agents, policies, and workflows.
@@ -47,6 +62,31 @@ func statePath(projectRoot, providerName string) string {
 // contents, so cleanup is exact even if the package set shrinks between
 // runs.
 func Apply(projectRoot string, adapter provider.Provider, pkgs []packages.Package) error {
+	return apply(projectRoot, adapter, pkgs, nil)
+}
+
+// WorkflowSequence describes an active workflow's ordered steps, so the
+// generated context file can say "follow these skills in this order"
+// instead of just listing an unordered package/skill set.
+type WorkflowSequence struct {
+	Name  string
+	Steps []string
+}
+
+// ApplyWorkflow stages only pkg's workflow steps (not its full skill set)
+// into adapter.SkillsDir, in the same idempotent/reversible way Apply does,
+// and writes the generated context file with the workflow's ordered
+// sequence made explicit. Scoping to just the workflow's steps is what
+// makes `lineage workflow run` meaningfully different from enabling the
+// whole package and running normally: only the skills the workflow
+// actually references get materialized.
+func ApplyWorkflow(projectRoot string, adapter provider.Provider, pkg packages.Package, wf packages.Workflow) error {
+	scoped := pkg
+	scoped.Skills = append([]string(nil), wf.Steps...)
+	return apply(projectRoot, adapter, []packages.Package{scoped}, &WorkflowSequence{Name: wf.Name, Steps: wf.Steps})
+}
+
+func apply(projectRoot string, adapter provider.Provider, pkgs []packages.Package, wf *WorkflowSequence) error {
 	prev, err := loadState(projectRoot, adapter.Name)
 	if err != nil {
 		return err
@@ -76,7 +116,7 @@ func Apply(projectRoot string, adapter provider.Provider, pkgs []packages.Packag
 	}
 	sort.Strings(written)
 
-	if err := writeSummary(filepath.Join(projectRoot, adapter.ContextFile), pkgs); err != nil {
+	if err := writeSummary(filepath.Join(projectRoot, adapter.ContextFile), pkgs, wf); err != nil {
 		return fmt.Errorf("update %s: %w", adapter.ContextFile, err)
 	}
 
@@ -106,6 +146,14 @@ func NeedsApproval(projectRoot string, adapter provider.Provider, pkgs []package
 	sort.Strings(prevDirs)
 
 	return !equalStrings(desiredDirs, prevDirs), nil
+}
+
+// NeedsApprovalForWorkflow is NeedsApproval scoped to a single workflow's
+// steps, matching what ApplyWorkflow would actually stage.
+func NeedsApprovalForWorkflow(projectRoot string, adapter provider.Provider, pkg packages.Package, wf packages.Workflow) (bool, error) {
+	scoped := pkg
+	scoped.Skills = append([]string(nil), wf.Steps...)
+	return NeedsApproval(projectRoot, adapter, []packages.Package{scoped})
 }
 
 func desiredSkillDirs(adapter provider.Provider, pkgs []packages.Package) map[string]string {
@@ -158,8 +206,8 @@ func saveState(projectRoot, providerName string, s state) error {
 	return os.WriteFile(path, data, 0o644)
 }
 
-func writeSummary(path string, pkgs []packages.Package) error {
-	block := renderSummaryBlock(pkgs)
+func writeSummary(path string, pkgs []packages.Package, wf *WorkflowSequence) error {
+	block := renderSummaryBlock(pkgs, wf)
 
 	existing, err := os.ReadFile(path)
 	if err != nil && !os.IsNotExist(err) {
@@ -177,10 +225,20 @@ func writeSummary(path string, pkgs []packages.Package) error {
 	return os.WriteFile(path, []byte(next), 0o644)
 }
 
-func renderSummaryBlock(pkgs []packages.Package) string {
+func renderSummaryBlock(pkgs []packages.Package, wf *WorkflowSequence) string {
 	var b strings.Builder
 	b.WriteString(beginMarker + "\n")
 	b.WriteString("Lineage-managed section. Do not edit by hand; it is regenerated on every `lineage run`.\n\n")
+
+	if wf != nil {
+		fmt.Fprintf(&b, "Active workflow: %s\n", wf.Name)
+		b.WriteString("Follow these skills in order:\n\n")
+		for i, step := range wf.Steps {
+			fmt.Fprintf(&b, "  %d. %s\n", i+1, step)
+		}
+		b.WriteString("\n")
+	}
+
 	b.WriteString("Active Lineage packages:\n\n")
 	if len(pkgs) == 0 {
 		b.WriteString("none\n")

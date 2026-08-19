@@ -1,3 +1,9 @@
+---
+steps:
+  - gather-notes
+  - resume-review
+---
+
 # Resume Review Workflow
 
 1. Confirm the target role and available source material.
