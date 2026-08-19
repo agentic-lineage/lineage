@@ -14,7 +14,7 @@ An earlier version of this decision proposed a custom backend with its own blob 
 
 ## Decision
 
-1. **Hosting/storage.** Package artifacts live in one shared **private GitHub repo** (`agentic-lineage/lineage-registry` or similar). Publishing a package creates a GitHub Release in that repo with the validated `.tgz` and manifest attached as release assets. No custom blob storage or metadata database — GitHub *is* the storage layer.
+1. **Hosting/storage.** Package artifacts live in one shared **private GitHub repo**, [`agentic-lineage/published-artifacts`](https://github.com/agentic-lineage/published-artifacts). Publishing a package creates a GitHub Release in that repo with the validated `.tgz` and manifest attached as release assets. No custom blob storage or metadata database — GitHub *is* the storage layer.
 
 2. **Website's role.** The existing `landing/` Vercel deployment is extended with a thin API layer, not a storage layer. It holds the one GitHub token with write access to the private registry repo. Publishers authenticate to the website's publish API with their own bearer token; the website is the only thing that ever talks to GitHub. Receivers (CLI pull, `lineage add`, and the bootstrap prompt) call the website's read API, which proxies the asset out of the private repo — no publisher or receiver ever needs their own GitHub credentials. `landing/` becomes the "Lineage website" referenced by #69, rather than a new `website/` directory or a separate codebase.
 
@@ -40,7 +40,7 @@ An earlier version of this decision proposed a custom backend with its own blob 
 
 ## Follow-Up
 
-- Confirm the registry repo name/org and who holds the GitHub token used by the website.
+- Who holds the `LINEAGE_REGISTRY_TOKEN` used by the website against `agentic-lineage/published-artifacts` still needs to be settled and rotated on a schedule.
 - The token-to-publisher-id mapping (decision 6) is a flat env var; if the publisher list grows past a handful of trusted people, revisit as a real identity system (accounts, OAuth, rotation without a redeploy).
 - Write and security-review the actual bootstrap prompt text once the website's endpoints exist to fetch/inspect/enable against.
 - Revisit the deferred GoReleaser/`curl | sh` install path (#64) once npx-based install proves insufficient (e.g. environments without Node).
