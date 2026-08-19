@@ -40,6 +40,9 @@ lineage package export <path> [-o file.tgz]
 lineage package import <file.tgz> [--as name]
 lineage package publish <path>
 lineage package pull <package-ref> [--as name]
+lineage login
+lineage logout
+lineage whoami
 lineage enable <package-path-or-id>
 lineage run claude --dry-run
 lineage run codex --dry-run
@@ -102,14 +105,14 @@ lineage package import resume-workflow.tgz
 lineage enable resume-workflow
 ```
 
-Or publish it to the Lineage registry instead of passing a file around:
+Or publish it to the Lineage registry instead of passing a file around. No token to request first - `lineage login` authenticates you with your own GitHub account (the same device-flow approval `gh auth login` uses):
 
 ```bash
-export LINEAGE_PUBLISH_TOKEN=...  # ask a maintainer for one, tied to your publisher id
+lineage login   # opens a code + a github.com link to approve once
 lineage package publish ./resume-workflow
 ```
 
-On the receiving end, pull it straight from the registry:
+On the receiving end, pull it straight from the registry (no login needed - pulling is an open read):
 
 ```bash
 lineage package pull resume-workflow
@@ -118,7 +121,7 @@ lineage enable resume-workflow
 
 `lineage package pull` fetches `resume-workflow` (or `resume-workflow@0.2.0` for an exact version), verifies its content digest, and imports it exactly like `package import` would - see [docs/decisions/0012-v1-distribution-contract-and-receiver-activation.md](docs/decisions/0012-v1-distribution-contract-and-receiver-activation.md) for how the registry is structured.
 
-The first publish of a package name claims it for your publisher id. To ship an update, bump `version` in `lineage.yaml` and run `lineage package publish` again with the same token - the registry accepts it because you're still the recorded owner of that name; a different publisher's token would be rejected.
+The first publish of a package name claims it for your verified GitHub login. To ship an update, bump `version` in `lineage.yaml` and run `lineage package publish` again - the registry accepts it because you're still the recorded owner of that name; a different GitHub account would be rejected. Run `lineage whoami` any time to check which identity is currently active, or `lineage logout` to clear it. For non-interactive use (CI), set `LINEAGE_PUBLISH_TOKEN` to any GitHub-issued token with `read:user` access instead of running `lineage login`.
 
 ## Safety Principles
 

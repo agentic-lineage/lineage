@@ -37,12 +37,21 @@ func TestPackagePublishRequiresToken(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Isolate LINEAGE_HOME to an empty temp dir: resolveGitHubToken falls
+	// back to whatever `lineage login` stored on disk, and this test must
+	// not accidentally pick up a real token file from the machine it runs
+	// on.
+	t.Setenv(config.HomeEnv, filepath.Join(root, "home"))
 	t.Setenv("LINEAGE_PUBLISH_TOKEN", "")
 	t.Setenv("LINEAGE_REGISTRY_URL", "http://unused.invalid")
 
 	var stdout, stderr bytes.Buffer
-	if err := Execute(nil, []string{"package", "publish", pkgDir}, nil, &stdout, &stderr); err == nil {
+	err := Execute(nil, []string{"package", "publish", pkgDir}, nil, &stdout, &stderr)
+	if err == nil {
 		t.Fatal("publish without a token: error = nil, want error")
+	}
+	if !strings.Contains(stderr.String(), "not logged in") {
+		t.Fatalf("stderr = %q, want a message pointing at `lineage login`", stderr.String())
 	}
 }
 
@@ -63,6 +72,7 @@ func TestPackagePublishSucceeds(t *testing.T) {
 	}))
 	defer srv.Close()
 
+	t.Setenv(config.HomeEnv, filepath.Join(root, "home"))
 	t.Setenv("LINEAGE_PUBLISH_TOKEN", "test-token")
 	t.Setenv("LINEAGE_REGISTRY_URL", srv.URL)
 

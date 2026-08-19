@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/lineage-dev/lineage/internal/auth"
 	"github.com/lineage-dev/lineage/internal/config"
 	"github.com/lineage-dev/lineage/internal/materialize"
 	"github.com/lineage-dev/lineage/internal/packages"
@@ -17,6 +18,19 @@ import (
 	"github.com/lineage-dev/lineage/internal/runtime"
 	"github.com/lineage-dev/lineage/internal/shim"
 )
+
+// resolveGitHubToken finds the GitHub token that identifies a publisher:
+// LINEAGE_PUBLISH_TOKEN first (the escape hatch for non-interactive use,
+// e.g. CI - set it to any GitHub-issued token with read:user access), then
+// whatever `lineage login` stored locally. Returns "" with no error if
+// neither is set; callers decide how to report that (runWhoAmI and
+// runPackagePublish both need it, with different error messages).
+func resolveGitHubToken(home string) (string, error) {
+	if token := os.Getenv("LINEAGE_PUBLISH_TOKEN"); token != "" {
+		return token, nil
+	}
+	return auth.LoadToken(home)
+}
 
 func Execute(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	if len(args) == 0 {
@@ -51,6 +65,12 @@ func Execute(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 		return runInstallShims(home, stdout, stderr)
 	case "doctor":
 		return runDoctor(home, stdout, stderr)
+	case "login":
+		return runLogin(home, stdout, stderr)
+	case "logout":
+		return runLogout(home, stdout, stderr)
+	case "whoami":
+		return runWhoAmI(home, stdout, stderr)
 	case "help", "-h", "--help":
 		printUsage(stdout)
 		return nil
@@ -131,7 +151,7 @@ func runPackage(args []string, home string, stdout, stderr io.Writer) error {
 	case "import":
 		return runPackageImport(args[1:], home, stdout, stderr)
 	case "publish":
-		return runPackagePublish(args[1:], stdout, stderr)
+		return runPackagePublish(args[1:], home, stdout, stderr)
 	case "pull":
 		return runPackagePull(args[1:], home, stdout, stderr)
 	default:
@@ -141,25 +161,26 @@ func runPackage(args []string, home string, stdout, stderr io.Writer) error {
 	}
 }
 
-// registryConfigFromEnv reads registry location and publish credentials
-// from the environment rather than .lineage/config.yaml: a publish token is
-// a per-invocation secret, not project state that belongs in a committed
-// file. See docs/decisions/0012-v1-distribution-contract-and-receiver-activation.md.
-func registryConfigFromEnv() packages.RegistryConfig {
-	return packages.RegistryConfig{
-		URL:   os.Getenv("LINEAGE_REGISTRY_URL"),
-		Token: os.Getenv("LINEAGE_PUBLISH_TOKEN"),
-	}
-}
-
-func runPackagePublish(args []string, stdout, stderr io.Writer) error {
+func runPackagePublish(args []string, home string, stdout, stderr io.Writer) error {
 	if len(args) != 1 {
 		err := fmt.Errorf("usage: lineage package publish <path>")
 		fmt.Fprintln(stderr, err)
 		return err
 	}
 
-	result, err := packages.Publish(filepath.Clean(args[0]), registryConfigFromEnv())
+	token, err := resolveGitHubToken(home)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+	if token == "" {
+		err := fmt.Errorf("not logged in; run `lineage login` first, or set LINEAGE_PUBLISH_TOKEN for non-interactive use")
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+
+	cfg := packages.RegistryConfig{URL: os.Getenv("LINEAGE_REGISTRY_URL"), Token: token}
+	result, err := packages.Publish(filepath.Clean(args[0]), cfg)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return err
@@ -199,7 +220,10 @@ func runPackagePull(args []string, home string, stdout, stderr io.Writer) error 
 		return err
 	}
 
-	name, err := packages.Pull(ref, registryConfigFromEnv(), destParent, asName)
+	// Pull is an unauthenticated read - the registry doesn't gate who can
+	// fetch a published package, only who can publish one.
+	cfg := packages.RegistryConfig{URL: os.Getenv("LINEAGE_REGISTRY_URL")}
+	name, err := packages.Pull(ref, cfg, destParent, asName)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return err
@@ -901,6 +925,9 @@ Usage:
   lineage package import <file.tgz> [--as name]
   lineage package publish <path>
   lineage package pull <package-ref> [--as name]
+  lineage login
+  lineage logout
+  lineage whoami
   lineage enable <package-path-or-id>
   lineage disable <package-path-or-id>
   lineage list
