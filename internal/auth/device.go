@@ -17,10 +17,11 @@ import (
 	"time"
 )
 
-// ClientID is Lineage's public GitHub OAuth App client id. It is not a
-// secret: GitHub's device flow for a public/native client never requires a
-// client secret to exchange a device code for an access token.
-const ClientID = "REPLACE_WITH_LINEAGE_OAUTH_CLIENT_ID"
+// ClientID is Lineage's public GitHub OAuth App client id (org:
+// agentic-lineage, Device Flow enabled). It is not a secret: GitHub's
+// device flow for a public/native client never requires a client secret to
+// exchange a device code for an access token.
+const ClientID = "Ov23liHPdq5xNJy2DU8W"
 
 // scope requests just enough to identify who's publishing. Lineage never
 // needs write access to a publisher's own account or repos - the registry
