@@ -81,9 +81,9 @@ All notable changes to Lineage will be documented here.
 - Added `lineage package export <path> [-o file.tgz]`: produces a
   deterministic tar.gz archive (manifest + content directories, sorted
   order, normalized permissions and timestamps) after running the same
-	  checks as `lineage package validate` and refusing to export if any
-	  fail. Two exports of byte-identical package content always produce
-	  byte-identical archive bytes.
+  checks as `lineage package validate` and refusing to export if any
+  fail. Two exports of byte-identical package content always produce
+  byte-identical archive bytes.
 - Added `lineage package import <file.tgz> [--as name]`: extracts an
   exported archive into the user packages directory. The archive is
   treated as untrusted input — every entry path is checked against
@@ -93,3 +93,50 @@ All notable changes to Lineage will be documented here.
   than installed. Never overwrites an existing package; use `--as` to
   import under a different name. Export followed by import reproduces
   the original package exactly, verified by matching content digests.
+- Vendored `gopkg.in/yaml.v3`, Lineage's one dependency, under
+  `vendor/`. `go build`/`go test ./...` no longer need network access
+  to `proxy.golang.org` on a fresh checkout — Go automatically prefers
+  the vendored copy whenever `vendor/modules.txt` is present and
+  consistent with `go.mod`.
+- Added `lineage list` (enabled packages in the current project, with
+  digest), `lineage disable <ref>` (removes a package and
+  re-materializes for every provider that has ever run in this
+  project, so disabling actually cleans up staged skills instead of
+  just editing config and leaving stale files behind), and `lineage
+  inspect <ref>` (manifest, discovered contents, digest, and
+  capabilities for any resolvable package — project path, user id, or
+  workspace id — without enabling it).
+- Fixed a pre-existing rendering bug where `lineage help`/usage output
+  contained literal tab characters instead of consistent indentation.
+- Added `lineage doctor`: checks project config validity (and that
+  every enabled ref still resolves), whether the shim directory is on
+  `PATH` and ordered before real provider binaries (a real binary
+  found first means the shim never takes effect), and warns when more
+  than one candidate binary exists for a provider on `PATH` — naming
+  every candidate, not just the one that currently wins silently.
+  Fails (non-zero exit) only for things that are actually broken;
+  ambiguous-but-working situations are warnings.
+- `lineage install-shims` now generates a `.cmd` batch shim on Windows
+  (previously it only ever wrote POSIX `sh` scripts, which Windows
+  can't execute) and a POSIX shim everywhere else, and shims are
+  generated from `internal/provider`'s registry instead of a
+  hardcoded `claude`/`codex` list. Provider binary resolution
+  (`findRealBinary`/`CandidateBinaries`) now resolves real binaries on
+  Windows through `PATHEXT` (`.exe`, `.cmd`, etc.) instead of only
+  matching an exact, extension-less filename.
+- `WORKFLOW.md` can now declare an ordered `steps` list (YAML
+  frontmatter, the same convention `SKILL.md` already uses) naming
+  skills within the same package. `lineage package validate` checks
+  every step resolves to a real skill.
+- Added `lineage workflow run <workflow-name> <provider> [--dry-run]
+  [--yes] [-- provider args...]`: finds which enabled package declares
+  the workflow and materializes *only* its steps — not the full
+  enabled package set — in order, then hands off to the provider. The
+  provider's generated context file explicitly lists the active
+  workflow and its ordered steps. Same permission-gate/`--dry-run`
+  behavior as `lineage run`; a plain `lineage run` afterward correctly
+  restores the full enabled package set, since both share the same
+  per-provider materialization state.
+- Fixed a rendering bug where `lineage help`/usage output for several
+  commands contained literal tab characters instead of consistent
+  indentation.

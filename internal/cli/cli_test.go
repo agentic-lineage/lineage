@@ -405,3 +405,296 @@ func TestPackageExportThenImportRoundTrip(t *testing.T) {
 		t.Fatalf("imported digest = %q, want %q", imported.Digest, original.Digest)
 	}
 }
+
+func TestListShowsEnabledPackages(t *testing.T) {
+	setUpEnabledProject(t)
+
+	var stdout, stderr bytes.Buffer
+	if err := Execute(nil, []string{"list"}, nil, &stdout, &stderr); err != nil {
+		t.Fatalf("list error = %v stderr=%s", err, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "agent-pack@0.1.0") {
+		t.Fatalf("list output = %q, want it to include the enabled package", stdout.String())
+	}
+}
+
+func TestListWithNoEnabledPackagesSaysSo(t *testing.T) {
+	tmp := t.TempDir()
+	home := filepath.Join(tmp, "home")
+	project := filepath.Join(tmp, "project")
+	if err := os.MkdirAll(project, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := config.SaveProjectConfig(config.ProjectConfigPath(project), config.DefaultProjectConfig()); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv(config.HomeEnv, home)
+	oldWd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(oldWd)
+	if err := os.Chdir(project); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if err := Execute(nil, []string{"list"}, nil, &stdout, &stderr); err != nil {
+		t.Fatalf("list error = %v stderr=%s", err, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "no packages enabled") {
+		t.Fatalf("list output = %q, want a clear empty message", stdout.String())
+	}
+}
+
+func TestDisableCleansUpMaterializedContent(t *testing.T) {
+	project, _ := setUpEnabledProject(t)
+
+	var stdout, stderr bytes.Buffer
+	if err := Execute(nil, []string{"run", "claude", "--yes"}, nil, &stdout, &stderr); err != nil {
+		t.Fatalf("run error = %v stderr=%s", err, stderr.String())
+	}
+	if _, err := os.Stat(filepath.Join(project, ".claude", "skills", "agent-pack-hello")); err != nil {
+		t.Fatalf("expected materialized skill before disable: %v", err)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if err := Execute(nil, []string{"disable", "./agent-pack"}, nil, &stdout, &stderr); err != nil {
+		t.Fatalf("disable error = %v stderr=%s", err, stderr.String())
+	}
+	if _, err := os.Stat(filepath.Join(project, ".claude", "skills", "agent-pack-hello")); !os.IsNotExist(err) {
+		t.Fatalf("expected staged skill removed after disable, stat err = %v", err)
+	}
+
+	cfg, err := config.LoadProjectConfig(config.ProjectConfigPath(project))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if contains(cfg.EnabledPackages, "./agent-pack") {
+		t.Fatalf("EnabledPackages = %#v, want ./agent-pack removed", cfg.EnabledPackages)
+	}
+}
+
+func TestDisableUnknownRefFails(t *testing.T) {
+	setUpEnabledProject(t)
+
+	var stdout, stderr bytes.Buffer
+	err := Execute(nil, []string{"disable", "./not-enabled"}, nil, &stdout, &stderr)
+	if err == nil {
+		t.Fatal("disable error = nil, want error for a ref that isn't enabled")
+	}
+}
+
+func TestInspectShowsPackageWithoutEnabling(t *testing.T) {
+	tmp := t.TempDir()
+	home := filepath.Join(tmp, "home")
+	pkgDir := filepath.Join(tmp, "standalone-pack")
+	if err := packages.InitPackage(pkgDir, "standalone-pack"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(pkgDir, "skills", "review"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pkgDir, "skills", "review", "SKILL.md"), []byte("# Review"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(config.HomeEnv, home)
+
+	var stdout, stderr bytes.Buffer
+	if err := Execute(nil, []string{"inspect", pkgDir}, nil, &stdout, &stderr); err != nil {
+		t.Fatalf("inspect error = %v stderr=%s", err, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "standalone-pack@0.1.0") {
+		t.Fatalf("inspect output = %q, want package identity", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "skills: review") {
+		t.Fatalf("inspect output = %q, want discovered skills", stdout.String())
+	}
+
+	cfgPath := config.ProjectConfigPath(filepath.Dir(pkgDir))
+	if _, err := os.Stat(cfgPath); !os.IsNotExist(err) {
+		t.Fatal("inspect must not create a project config or enable anything")
+	}
+}
+
+func TestDoctorOutsideProjectSkipsPackageChecks(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv(config.HomeEnv, home)
+	oldWd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(oldWd)
+	if err := os.Chdir(t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if err := Execute(nil, []string{"doctor"}, nil, &stdout, &stderr); err != nil {
+		t.Fatalf("doctor error = %v stderr=%s", err, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "not inside a Lineage project") {
+		t.Fatalf("doctor output = %q, want it to note it's outside a project", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "result: OK") {
+		t.Fatalf("doctor output = %q, want a clean result outside a project", stdout.String())
+	}
+}
+
+func TestDoctorFailsOnUnresolvableEnabledPackage(t *testing.T) {
+	tmp := t.TempDir()
+	home := filepath.Join(tmp, "home")
+	project := filepath.Join(tmp, "project")
+	if err := os.MkdirAll(project, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.DefaultProjectConfig()
+	cfg.EnabledPackages = []string{"./does-not-exist"}
+	if err := config.SaveProjectConfig(config.ProjectConfigPath(project), cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv(config.HomeEnv, home)
+	oldWd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(oldWd)
+	if err := os.Chdir(project); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	err = Execute(nil, []string{"doctor"}, nil, &stdout, &stderr)
+	if err == nil {
+		t.Fatal("doctor error = nil, want error for an unresolvable enabled package")
+	}
+	if !strings.Contains(stdout.String(), "enabled packages: FAIL") {
+		t.Fatalf("doctor output = %q, want a FAIL line for enabled packages", stdout.String())
+	}
+}
+
+func TestDoctorReportsEachKnownProvider(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv(config.HomeEnv, home)
+	oldWd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(oldWd)
+	if err := os.Chdir(t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if err := Execute(nil, []string{"doctor"}, nil, &stdout, &stderr); err != nil {
+		t.Fatalf("doctor error = %v stderr=%s", err, stderr.String())
+	}
+	for _, name := range []string{"claude", "codex"} {
+		if !strings.Contains(stdout.String(), "provider "+name+":") {
+			t.Fatalf("doctor output = %q, want a line for provider %s", stdout.String(), name)
+		}
+	}
+}
+
+func setUpEnabledWorkflowProject(t *testing.T) (project, home string) {
+	t.Helper()
+	tmp := t.TempDir()
+	home = filepath.Join(tmp, "home")
+	project = filepath.Join(tmp, "project")
+	pkgDir := filepath.Join(project, "wf-pack")
+	if err := packages.InitPackage(pkgDir, "wf-pack"); err != nil {
+		t.Fatal(err)
+	}
+	for _, skill := range []string{"gather", "review"} {
+		if err := os.MkdirAll(filepath.Join(pkgDir, "skills", skill), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(pkgDir, "skills", skill, "SKILL.md"), []byte("# "+skill), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.MkdirAll(filepath.Join(pkgDir, "workflows", "review-flow"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	wfContent := "---\nsteps:\n  - gather\n  - review\n---\n\n# Review Flow\n"
+	if err := os.WriteFile(filepath.Join(pkgDir, "workflows", "review-flow", "WORKFLOW.md"), []byte(wfContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(project, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	oldHome := os.Getenv(config.HomeEnv)
+	t.Setenv(config.HomeEnv, home)
+	t.Cleanup(func() { os.Setenv(config.HomeEnv, oldHome) })
+	oldWd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chdir(oldWd) })
+	if err := os.Chdir(project); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if err := Execute(nil, []string{"enable", "./wf-pack"}, nil, &stdout, &stderr); err != nil {
+		t.Fatalf("enable error = %v stderr=%s", err, stderr.String())
+	}
+
+	cfg, err := config.LoadProjectConfig(config.ProjectConfigPath(project))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Providers = map[string]config.Provider{"claude": {Binary: "/bin/echo"}}
+	if err := config.SaveProjectConfig(config.ProjectConfigPath(project), cfg); err != nil {
+		t.Fatal(err)
+	}
+	return project, home
+}
+
+func TestWorkflowRunDryRunShowsOrderedSteps(t *testing.T) {
+	setUpEnabledWorkflowProject(t)
+
+	var stdout, stderr bytes.Buffer
+	if err := Execute(nil, []string{"workflow", "run", "review-flow", "claude", "--dry-run"}, nil, &stdout, &stderr); err != nil {
+		t.Fatalf("workflow run error = %v stderr=%s", err, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "1. gather") || !strings.Contains(stdout.String(), "2. review") {
+		t.Fatalf("dry-run output = %s, want ordered steps", stdout.String())
+	}
+}
+
+func TestWorkflowRunMaterializesOnlyItsSteps(t *testing.T) {
+	project, _ := setUpEnabledWorkflowProject(t)
+
+	var stdout, stderr bytes.Buffer
+	if err := Execute(nil, []string{"workflow", "run", "review-flow", "claude", "--yes"}, nil, &stdout, &stderr); err != nil {
+		t.Fatalf("workflow run error = %v stderr=%s", err, stderr.String())
+	}
+	for _, skill := range []string{"gather", "review"} {
+		if _, err := os.Stat(filepath.Join(project, ".claude", "skills", "wf-pack-"+skill)); err != nil {
+			t.Fatalf("expected %s staged: %v", skill, err)
+		}
+	}
+
+	content, err := os.ReadFile(filepath.Join(project, "CLAUDE.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(content), "Active workflow: review-flow") {
+		t.Fatalf("CLAUDE.md = %s, want the active workflow sequence", content)
+	}
+}
+
+func TestWorkflowRunUnknownWorkflowFails(t *testing.T) {
+	setUpEnabledWorkflowProject(t)
+
+	var stdout, stderr bytes.Buffer
+	err := Execute(nil, []string{"workflow", "run", "does-not-exist", "claude", "--dry-run"}, nil, &stdout, &stderr)
+	if err == nil {
+		t.Fatal("workflow run error = nil, want error for an unknown workflow")
+	}
+}

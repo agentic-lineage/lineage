@@ -37,10 +37,20 @@ func Execute(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 		return runPackage(args[1:], home, stdout, stderr)
 	case "enable":
 		return runEnable(args[1:], home, stdout, stderr)
+	case "list":
+		return runList(home, stdout, stderr)
+	case "disable":
+		return runDisable(args[1:], home, stdout, stderr)
+	case "inspect":
+		return runInspect(args[1:], home, stdout, stderr)
 	case "run":
 		return runProvider(ctx, args[1:], home, stdin, stdout, stderr)
+	case "workflow":
+		return runWorkflow(args[1:], home, stdin, stdout, stderr)
 	case "install-shims":
 		return runInstallShims(home, stdout, stderr)
+	case "doctor":
+		return runDoctor(home, stdout, stderr)
 	case "help", "-h", "--help":
 		printUsage(stdout)
 		return nil
@@ -363,6 +373,164 @@ func runEnable(args []string, home string, stdout, stderr io.Writer) error {
 	return nil
 }
 
+func runList(home string, stdout, stderr io.Writer) error {
+	cwd, err := os.Getwd()
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+	found, err := config.FindProjectConfig(cwd)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+
+	if len(found.Config.EnabledPackages) == 0 {
+		fmt.Fprintln(stdout, "no packages enabled")
+		return nil
+	}
+
+	resolved, err := packages.ResolveEnabled(home, found.Config.Workspace, found.Root, found.Config.EnabledPackages)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+	for _, pkg := range resolved {
+		fmt.Fprintf(stdout, "%s@%s  %s\n", pkg.Manifest.Name, pkg.Manifest.Version, pkg.Digest)
+	}
+	return nil
+}
+
+func runDisable(args []string, home string, stdout, stderr io.Writer) error {
+	if len(args) != 1 {
+		err := fmt.Errorf("usage: lineage disable <package-path-or-id>")
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+	ref := args[0]
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+	found, err := config.FindProjectConfig(cwd)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+
+	if !contains(found.Config.EnabledPackages, ref) {
+		err := fmt.Errorf("package %q is not enabled in %s", ref, found.Path)
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+
+	newEnabled := make([]string, 0, len(found.Config.EnabledPackages)-1)
+	for _, r := range found.Config.EnabledPackages {
+		if r != ref {
+			newEnabled = append(newEnabled, r)
+		}
+	}
+
+	resolved, err := packages.ResolveEnabled(home, found.Config.Workspace, found.Root, newEnabled)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+
+	// Re-materialize for every provider that has ever been materialized in
+	// this project, so disabling actually removes what was staged - Apply
+	// already reconciles to exactly the package set it's given, removing
+	// anything no longer desired. A provider that was never materialized
+	// here doesn't get a state file created just because something else
+	// was disabled.
+	for _, p := range provider.Known() {
+		hasState, err := materialize.HasState(found.Root, p.Name)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return err
+		}
+		if !hasState {
+			continue
+		}
+		if err := materialize.Apply(found.Root, p, resolved); err != nil {
+			fmt.Fprintln(stderr, err)
+			return err
+		}
+	}
+
+	found.Config.EnabledPackages = newEnabled
+	if err := config.SaveProjectConfig(found.Path, found.Config); err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+	fmt.Fprintf(stdout, "disabled package %s in %s\n", ref, found.Path)
+	return nil
+}
+
+func runInspect(args []string, home string, stdout, stderr io.Writer) error {
+	if len(args) != 1 {
+		err := fmt.Errorf("usage: lineage inspect <package-path-or-id>")
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+	ref := args[0]
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+
+	// Same resolution rule as enable: a "."/absolute ref is relative to
+	// where the user typed it, a bare id is looked up against the
+	// project/user/workspace search path anchored at the project root (if
+	// any - inspect works even outside a project, e.g. against a bare
+	// local path).
+	projectRoot := cwd
+	workspace := ""
+	if found, err := config.FindProjectConfig(cwd); err == nil {
+		projectRoot = found.Root
+		workspace = found.Config.Workspace
+	} else if !errors.Is(err, config.ErrProjectConfigNotFound) {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+
+	resolveRoot := projectRoot
+	if filepath.IsAbs(ref) || strings.HasPrefix(ref, ".") {
+		resolveRoot = cwd
+	}
+	path, err := packages.ResolveReference(home, workspace, resolveRoot, ref)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+
+	pkg, err := packages.Discover(path)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+
+	fmt.Fprintf(stdout, "package: %s@%s (schema %d)\n", pkg.Manifest.Name, pkg.Manifest.Version, pkg.Manifest.Schema)
+	fmt.Fprintf(stdout, "path: %s\n", pkg.Path)
+	fmt.Fprintf(stdout, "digest: %s\n", emptyValue(pkg.Digest))
+	if pkg.Manifest.Description != "" {
+		fmt.Fprintf(stdout, "description: %s\n", pkg.Manifest.Description)
+	}
+	fmt.Fprintf(stdout, "skills: %s\n", listValue(pkg.Skills))
+	fmt.Fprintf(stdout, "workflows: %s\n", listValue(pkg.Workflows))
+	fmt.Fprintf(stdout, "agents: %s\n", listValue(pkg.Agents))
+	fmt.Fprintf(stdout, "policies: %s\n", listValue(pkg.Policies))
+	fmt.Fprintf(stdout, "requires.skills: %s\n", listValue(pkg.Manifest.Requires.Skills))
+	fmt.Fprintf(stdout, "capabilities:\n")
+	fmt.Fprintf(stdout, "  filesystem.read: %s\n", listValue(pkg.Manifest.Capabilities.Filesystem.Read))
+	fmt.Fprintf(stdout, "  network: %s\n", listValue(pkg.Manifest.Capabilities.Network))
+	return nil
+}
+
 func runProvider(ctx context.Context, args []string, home string, stdin io.Reader, stdout, stderr io.Writer) error {
 	_ = ctx
 	if len(args) == 0 {
@@ -430,6 +598,104 @@ func runProvider(ctx context.Context, args []string, home string, stdin io.Reade
 	return nil
 }
 
+func runWorkflow(args []string, home string, stdin io.Reader, stdout, stderr io.Writer) error {
+	usage := fmt.Errorf("usage: lineage workflow run <workflow-name> <%s> [--dry-run] [--yes] [-- provider args...]", providerNameList())
+	if len(args) < 3 || args[0] != "run" {
+		fmt.Fprintln(stderr, usage)
+		return usage
+	}
+
+	workflowName := args[1]
+	providerName := args[2]
+	dryRun, autoApprove, providerArgs := parseRunArgs(args[3:])
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+	found, err := config.FindProjectConfig(cwd)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+
+	resolved, err := packages.ResolveEnabled(home, found.Config.Workspace, found.Root, found.Config.EnabledPackages)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+	if err := packages.ValidateDependencies(resolved); err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+
+	ownerPkg, wf, err := packages.FindWorkflow(resolved, workflowName)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+
+	adapter, err := provider.Get(providerName)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+	providerPlan, err := provider.Resolve(providerName, home, found.Config, providerArgs)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+
+	if dryRun {
+		fmt.Fprint(stdout, workflowPlanString(wf, ownerPkg, providerName, providerPlan))
+		return nil
+	}
+
+	// Same permission gate as `lineage run`, scoped to just this workflow's
+	// steps rather than the whole enabled package set - see
+	// materialize.ApplyWorkflow.
+	needsApproval, err := materialize.NeedsApprovalForWorkflow(found.Root, adapter, ownerPkg, wf)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+	if needsApproval && !autoApprove {
+		fmt.Fprintf(stdout, "lineage will make the following changes to run workflow %q for %s:\n\n", wf.Name, providerName)
+		fmt.Fprint(stdout, workflowPlanString(wf, ownerPkg, providerName, providerPlan))
+		fmt.Fprint(stdout, "\nProceed? [y/N] ")
+		if !confirm(stdin) {
+			fmt.Fprintln(stdout, "aborted: materialization was not approved")
+			return nil
+		}
+	}
+
+	if err := materialize.ApplyWorkflow(found.Root, adapter, ownerPkg, wf); err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+
+	if err := provider.Launch(providerPlan); err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+	return nil
+}
+
+func workflowPlanString(wf packages.Workflow, pkg packages.Package, providerName string, providerPlan provider.Plan) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "Lineage workflow plan\n")
+	fmt.Fprintf(&b, "workflow: %s\n", wf.Name)
+	fmt.Fprintf(&b, "package: %s@%s\n", pkg.Manifest.Name, pkg.Manifest.Version)
+	fmt.Fprintf(&b, "provider: %s\n", providerName)
+	fmt.Fprintf(&b, "real_binary: %s\n", emptyValue(providerPlan.Binary))
+	fmt.Fprintf(&b, "steps:\n")
+	for i, step := range wf.Steps {
+		fmt.Fprintf(&b, "  %d. %s\n", i+1, step)
+	}
+	return b.String()
+}
+
 // confirm reads a single line from stdin and reports whether it's an
 // affirmative answer ("y" or "yes", case-insensitive). Anything else,
 // including EOF or a nil reader, is treated as a decline - approval must be
@@ -461,6 +727,95 @@ func runInstallShims(home string, stdout, stderr io.Writer) error {
 	return nil
 }
 
+// runDoctor sanity-checks a Lineage setup: project config validity, shim
+// PATH placement, and provider binary resolution. It fails (non-zero exit)
+// only for things that are actually broken (a project config that doesn't
+// parse, an enabled ref that no longer resolves); everything else that's
+// merely ambiguous-but-working (multiple provider binary candidates, a shim
+// directory not on PATH) is a warning, printed but not fatal.
+func runDoctor(home string, stdout, stderr io.Writer) error {
+	broken := false
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+
+	if found, err := config.FindProjectConfig(cwd); err == nil {
+		fmt.Fprintf(stdout, "project config: OK (%s)\n", found.Path)
+		if _, err := packages.ResolveEnabled(home, found.Config.Workspace, found.Root, found.Config.EnabledPackages); err != nil {
+			fmt.Fprintf(stdout, "enabled packages: FAIL - %v\n", err)
+			broken = true
+		} else {
+			fmt.Fprintf(stdout, "enabled packages: OK (%d enabled)\n", len(found.Config.EnabledPackages))
+		}
+	} else if errors.Is(err, config.ErrProjectConfigNotFound) {
+		fmt.Fprintln(stdout, "project config: not inside a Lineage project (skipping enabled-package checks)")
+	} else {
+		fmt.Fprintf(stdout, "project config: FAIL - %v\n", err)
+		broken = true
+	}
+
+	shimsDir := config.ShimsDir(home)
+	pathEntries := filepath.SplitList(os.Getenv("PATH"))
+	shimIdx := pathIndexOf(pathEntries, shimsDir)
+	if shimIdx == -1 {
+		fmt.Fprintf(stdout, "shim PATH: WARN - %s is not on PATH; run `lineage install-shims`, then add that directory to PATH before your provider binaries\n", shimsDir)
+	} else {
+		fmt.Fprintf(stdout, "shim PATH: OK (%s is on PATH)\n", shimsDir)
+	}
+
+	for _, p := range provider.Known() {
+		candidates := provider.CandidateBinaries(p.Name, home)
+		switch len(candidates) {
+		case 0:
+			fmt.Fprintf(stdout, "provider %s: no real binary found on PATH (not installed, or set providers.%s.binary in .lineage/config.yaml)\n", p.Name, p.Name)
+			continue
+		case 1:
+			fmt.Fprintf(stdout, "provider %s: OK (%s)\n", p.Name, candidates[0])
+		default:
+			fmt.Fprintf(stdout, "provider %s: WARN - multiple candidates on PATH; the first one wins silently:\n", p.Name)
+			for _, c := range candidates {
+				fmt.Fprintf(stdout, "    %s\n", c)
+			}
+		}
+
+		if shimIdx == -1 {
+			continue
+		}
+		winnerIdx := pathIndexOf(pathEntries, filepath.Dir(candidates[0]))
+		if winnerIdx != -1 && winnerIdx < shimIdx {
+			fmt.Fprintf(stdout, "provider %s: WARN - the real binary at %s comes before the shim directory on PATH, so the shim never takes effect for this provider\n", p.Name, candidates[0])
+		}
+	}
+
+	if broken {
+		err := fmt.Errorf("lineage doctor found problems that need fixing")
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+	fmt.Fprintln(stdout, "\nresult: OK")
+	return nil
+}
+
+// pathIndexOf returns the index of dir within pathEntries (comparing
+// absolute paths, so relative and absolute forms of the same directory
+// match), or -1 if it isn't present.
+func pathIndexOf(pathEntries []string, dir string) int {
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		return -1
+	}
+	for i, entry := range pathEntries {
+		absEntry, err := filepath.Abs(entry)
+		if err == nil && absEntry == absDir {
+			return i
+		}
+	}
+	return -1
+}
+
 func printUsage(w io.Writer) {
 	fmt.Fprintln(w, strings.TrimSpace(fmt.Sprintf(`
 Lineage shareable agent runtime
@@ -468,14 +823,19 @@ Lineage shareable agent runtime
 Usage:
   lineage init user
   lineage init workspace <name>
-	  lineage package init <name>
-	  lineage package validate <path>
-	  lineage package export <path> [-o file.tgz]
-	  lineage package import <file.tgz> [--as name]
-	  lineage enable <package-path-or-id>
-	  lineage run <%s> [--dry-run] [--yes] [-- provider args...]
-	  lineage install-shims
-`, providerNameList())))
+  lineage package init <name>
+  lineage package validate <path>
+  lineage package export <path> [-o file.tgz]
+  lineage package import <file.tgz> [--as name]
+  lineage enable <package-path-or-id>
+  lineage disable <package-path-or-id>
+  lineage list
+  lineage inspect <package-path-or-id>
+  lineage run <%s> [--dry-run] [--yes] [-- provider args...]
+  lineage doctor
+  lineage workflow run <workflow-name> <%s> [--dry-run] [--yes] [-- provider args...]
+  lineage install-shims
+`, providerNameList(), providerNameList())))
 }
 
 // providerNameList returns every registered provider name, comma-separated,
