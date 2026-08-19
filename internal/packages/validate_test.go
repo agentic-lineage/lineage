@@ -109,3 +109,36 @@ func TestValidateFailsForUnloadableManifest(t *testing.T) {
 		t.Fatal("Validate() error = nil, want error for an unsupported schema")
 	}
 }
+
+func TestValidateRejectsWorkflowWithBrokenStep(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "broken-workflow-pack")
+	if err := InitPackage(root, "broken-workflow-pack"); err != nil {
+		t.Fatal(err)
+	}
+	mustWrite(t, filepath.Join(root, "workflows", "review", WorkflowFileName), "---\nsteps:\n  - does-not-exist\n---\n")
+
+	report, err := Validate(root)
+	if err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+	if report.Passed() {
+		t.Fatal("report.Passed() = true, want false for a workflow step referencing a nonexistent skill")
+	}
+}
+
+func TestValidatePassesWorkflowWithResolvedSteps(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "good-workflow-pack")
+	if err := InitPackage(root, "good-workflow-pack"); err != nil {
+		t.Fatal(err)
+	}
+	mustWrite(t, filepath.Join(root, "skills", "gather", "SKILL.md"), "# Gather")
+	mustWrite(t, filepath.Join(root, "workflows", "review", WorkflowFileName), "---\nsteps:\n  - gather\n---\n")
+
+	report, err := Validate(root)
+	if err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+	if !report.Passed() {
+		t.Fatalf("report.Passed() = false, errors = %#v", report.Errors)
+	}
+}
