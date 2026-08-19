@@ -45,6 +45,8 @@ func Execute(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 		return runInspect(args[1:], home, stdout, stderr)
 	case "run":
 		return runProvider(ctx, args[1:], home, stdin, stdout, stderr)
+	case "workflow":
+		return runWorkflow(args[1:], home, stdin, stdout, stderr)
 	case "install-shims":
 		return runInstallShims(home, stdout, stderr)
 	case "help", "-h", "--help":
@@ -594,6 +596,104 @@ func runProvider(ctx context.Context, args []string, home string, stdin io.Reade
 	return nil
 }
 
+func runWorkflow(args []string, home string, stdin io.Reader, stdout, stderr io.Writer) error {
+	usage := fmt.Errorf("usage: lineage workflow run <workflow-name> <%s> [--dry-run] [--yes] [-- provider args...]", providerNameList())
+	if len(args) < 3 || args[0] != "run" {
+		fmt.Fprintln(stderr, usage)
+		return usage
+	}
+
+	workflowName := args[1]
+	providerName := args[2]
+	dryRun, autoApprove, providerArgs := parseRunArgs(args[3:])
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+	found, err := config.FindProjectConfig(cwd)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+
+	resolved, err := packages.ResolveEnabled(home, found.Config.Workspace, found.Root, found.Config.EnabledPackages)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+	if err := packages.ValidateDependencies(resolved); err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+
+	ownerPkg, wf, err := packages.FindWorkflow(resolved, workflowName)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+
+	adapter, err := provider.Get(providerName)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+	providerPlan, err := provider.Resolve(providerName, home, found.Config, providerArgs)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+
+	if dryRun {
+		fmt.Fprint(stdout, workflowPlanString(wf, ownerPkg, providerName, providerPlan))
+		return nil
+	}
+
+	// Same permission gate as `lineage run`, scoped to just this workflow's
+	// steps rather than the whole enabled package set - see
+	// materialize.ApplyWorkflow.
+	needsApproval, err := materialize.NeedsApprovalForWorkflow(found.Root, adapter, ownerPkg, wf)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+	if needsApproval && !autoApprove {
+		fmt.Fprintf(stdout, "lineage will make the following changes to run workflow %q for %s:\n\n", wf.Name, providerName)
+		fmt.Fprint(stdout, workflowPlanString(wf, ownerPkg, providerName, providerPlan))
+		fmt.Fprint(stdout, "\nProceed? [y/N] ")
+		if !confirm(stdin) {
+			fmt.Fprintln(stdout, "aborted: materialization was not approved")
+			return nil
+		}
+	}
+
+	if err := materialize.ApplyWorkflow(found.Root, adapter, ownerPkg, wf); err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+
+	if err := provider.Launch(providerPlan); err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+	return nil
+}
+
+func workflowPlanString(wf packages.Workflow, pkg packages.Package, providerName string, providerPlan provider.Plan) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "Lineage workflow plan\n")
+	fmt.Fprintf(&b, "workflow: %s\n", wf.Name)
+	fmt.Fprintf(&b, "package: %s@%s\n", pkg.Manifest.Name, pkg.Manifest.Version)
+	fmt.Fprintf(&b, "provider: %s\n", providerName)
+	fmt.Fprintf(&b, "real_binary: %s\n", emptyValue(providerPlan.Binary))
+	fmt.Fprintf(&b, "steps:\n")
+	for i, step := range wf.Steps {
+		fmt.Fprintf(&b, "  %d. %s\n", i+1, step)
+	}
+	return b.String()
+}
+
 // confirm reads a single line from stdin and reports whether it's an
 // affirmative answer ("y" or "yes", case-insensitive). Anything else,
 // including EOF or a nil reader, is treated as a decline - approval must be
@@ -641,8 +741,9 @@ Usage:
   lineage list
   lineage inspect <package-path-or-id>
   lineage run <%s> [--dry-run] [--yes] [-- provider args...]
+  lineage workflow run <workflow-name> <%s> [--dry-run] [--yes] [-- provider args...]
   lineage install-shims
-`, providerNameList())))
+`, providerNameList(), providerNameList())))
 }
 
 // providerNameList returns every registered provider name, comma-separated,
