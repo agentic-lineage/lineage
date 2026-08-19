@@ -111,3 +111,11 @@ All notable changes to Lineage will be documented here.
   every candidate, not just the one that currently wins silently.
   Fails (non-zero exit) only for things that are actually broken;
   ambiguous-but-working situations are warnings.
+- `lineage install-shims` now generates a `.cmd` batch shim on Windows
+  (previously it only ever wrote POSIX `sh` scripts, which Windows
+  can't execute) and a POSIX shim everywhere else, and shims are
+  generated from `internal/provider`'s registry instead of a
+  hardcoded `claude`/`codex` list. Provider binary resolution
+  (`findRealBinary`/`CandidateBinaries`) now resolves real binaries on
+  Windows through `PATHEXT` (`.exe`, `.cmd`, etc.) instead of only
+  matching an exact, extension-less filename.
