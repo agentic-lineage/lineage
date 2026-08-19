@@ -598,3 +598,103 @@ func TestDoctorReportsEachKnownProvider(t *testing.T) {
 		}
 	}
 }
+
+func setUpEnabledWorkflowProject(t *testing.T) (project, home string) {
+	t.Helper()
+	tmp := t.TempDir()
+	home = filepath.Join(tmp, "home")
+	project = filepath.Join(tmp, "project")
+	pkgDir := filepath.Join(project, "wf-pack")
+	if err := packages.InitPackage(pkgDir, "wf-pack"); err != nil {
+		t.Fatal(err)
+	}
+	for _, skill := range []string{"gather", "review"} {
+		if err := os.MkdirAll(filepath.Join(pkgDir, "skills", skill), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(pkgDir, "skills", skill, "SKILL.md"), []byte("# "+skill), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.MkdirAll(filepath.Join(pkgDir, "workflows", "review-flow"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	wfContent := "---\nsteps:\n  - gather\n  - review\n---\n\n# Review Flow\n"
+	if err := os.WriteFile(filepath.Join(pkgDir, "workflows", "review-flow", "WORKFLOW.md"), []byte(wfContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(project, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	oldHome := os.Getenv(config.HomeEnv)
+	t.Setenv(config.HomeEnv, home)
+	t.Cleanup(func() { os.Setenv(config.HomeEnv, oldHome) })
+	oldWd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chdir(oldWd) })
+	if err := os.Chdir(project); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if err := Execute(nil, []string{"enable", "./wf-pack"}, nil, &stdout, &stderr); err != nil {
+		t.Fatalf("enable error = %v stderr=%s", err, stderr.String())
+	}
+
+	cfg, err := config.LoadProjectConfig(config.ProjectConfigPath(project))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Providers = map[string]config.Provider{"claude": {Binary: "/bin/echo"}}
+	if err := config.SaveProjectConfig(config.ProjectConfigPath(project), cfg); err != nil {
+		t.Fatal(err)
+	}
+	return project, home
+}
+
+func TestWorkflowRunDryRunShowsOrderedSteps(t *testing.T) {
+	setUpEnabledWorkflowProject(t)
+
+	var stdout, stderr bytes.Buffer
+	if err := Execute(nil, []string{"workflow", "run", "review-flow", "claude", "--dry-run"}, nil, &stdout, &stderr); err != nil {
+		t.Fatalf("workflow run error = %v stderr=%s", err, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "1. gather") || !strings.Contains(stdout.String(), "2. review") {
+		t.Fatalf("dry-run output = %s, want ordered steps", stdout.String())
+	}
+}
+
+func TestWorkflowRunMaterializesOnlyItsSteps(t *testing.T) {
+	project, _ := setUpEnabledWorkflowProject(t)
+
+	var stdout, stderr bytes.Buffer
+	if err := Execute(nil, []string{"workflow", "run", "review-flow", "claude", "--yes"}, nil, &stdout, &stderr); err != nil {
+		t.Fatalf("workflow run error = %v stderr=%s", err, stderr.String())
+	}
+	for _, skill := range []string{"gather", "review"} {
+		if _, err := os.Stat(filepath.Join(project, ".claude", "skills", "wf-pack-"+skill)); err != nil {
+			t.Fatalf("expected %s staged: %v", skill, err)
+		}
+	}
+
+	content, err := os.ReadFile(filepath.Join(project, "CLAUDE.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(content), "Active workflow: review-flow") {
+		t.Fatalf("CLAUDE.md = %s, want the active workflow sequence", content)
+	}
+}
+
+func TestWorkflowRunUnknownWorkflowFails(t *testing.T) {
+	setUpEnabledWorkflowProject(t)
+
+	var stdout, stderr bytes.Buffer
+	err := Execute(nil, []string{"workflow", "run", "does-not-exist", "claude", "--dry-run"}, nil, &stdout, &stderr)
+	if err == nil {
+		t.Fatal("workflow run error = nil, want error for an unknown workflow")
+	}
+}

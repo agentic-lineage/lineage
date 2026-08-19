@@ -42,7 +42,7 @@ func Discover(dir string) (Package, error) {
 		return Package{}, fmt.Errorf("%s: %w", dir, err)
 	}
 
-	workflows, err := applyExportAuthority("workflow", manifest.Exports.Workflows, discoverNamesWithFile(filepath.Join(dir, "workflows"), "WORKFLOW.md"))
+	workflows, err := applyExportAuthority("workflow", manifest.Exports.Workflows, discoverNamesWithFile(filepath.Join(dir, "workflows"), WorkflowFileName))
 	if err != nil {
 		return Package{}, fmt.Errorf("%s: %w", dir, err)
 	}
