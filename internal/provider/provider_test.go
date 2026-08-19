@@ -117,7 +117,13 @@ func TestCandidateExtensionsWindowsHonorsPathextEnv(t *testing.T) {
 func TestCandidateBinariesForWindowsFindsCmdShimTarget(t *testing.T) {
 	home := t.TempDir()
 	dir := t.TempDir()
-	t.Setenv("PATHEXT", ".EXE;.CMD")
+	// Real Windows filesystems (NTFS) are case-insensitive, so PATHEXT's
+	// conventional uppercase wouldn't matter there. This test's fixture
+	// file and PATHEXT value are kept in matching case deliberately: a
+	// case-sensitive host filesystem (e.g. this repo's Linux CI) must not
+	// make an otherwise-correct Windows-branch test flaky depending on
+	// what the test happens to be running on.
+	t.Setenv("PATHEXT", ".exe;.cmd")
 
 	// On Windows, a permission bit isn't what makes a file "runnable" as a
 	// bare command - existing under a PATHEXT-listed extension is. Deny
@@ -129,14 +135,9 @@ func TestCandidateBinariesForWindowsFindsCmdShimTarget(t *testing.T) {
 
 	t.Setenv("PATH", dir)
 	candidates := candidateBinariesFor("claude", home, "windows")
-	// Compared case-insensitively: PATHEXT is conventionally uppercase
-	// (.CMD) while the file on disk is lowercase (claude.cmd), and both
-	// NTFS and the case-insensitive filesystem this test may run on
-	// resolve that the same way real Windows would - the constructed
-	// candidate path is valid even when its case doesn't match the
-	// on-disk filename byte-for-byte.
-	if len(candidates) != 1 || !strings.EqualFold(candidates[0], filepath.Join(dir, "claude.cmd")) {
-		t.Fatalf("candidateBinariesFor(windows) = %#v, want [%s] (case-insensitive)", candidates, filepath.Join(dir, "claude.cmd"))
+	want := filepath.Join(dir, "claude.cmd")
+	if len(candidates) != 1 || candidates[0] != want {
+		t.Fatalf("candidateBinariesFor(windows) = %#v, want [%s]", candidates, want)
 	}
 }
 
@@ -149,7 +150,7 @@ func TestCandidateBinariesForWindowsSkipsShimDirRegardlessOfExtension(t *testing
 	if err := os.WriteFile(filepath.Join(shimDir, "claude.cmd"), []byte("@echo off\r\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("PATHEXT", ".EXE;.CMD")
+	t.Setenv("PATHEXT", ".exe;.cmd")
 	t.Setenv("PATH", shimDir)
 
 	candidates := candidateBinariesFor("claude", home, "windows")
