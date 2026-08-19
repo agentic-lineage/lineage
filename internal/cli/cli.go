@@ -47,6 +47,8 @@ func Execute(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 		return runProvider(ctx, args[1:], home, stdin, stdout, stderr)
 	case "install-shims":
 		return runInstallShims(home, stdout, stderr)
+	case "doctor":
+		return runDoctor(home, stdout, stderr)
 	case "help", "-h", "--help":
 		printUsage(stdout)
 		return nil
@@ -625,6 +627,95 @@ func runInstallShims(home string, stdout, stderr io.Writer) error {
 	return nil
 }
 
+// runDoctor sanity-checks a Lineage setup: project config validity, shim
+// PATH placement, and provider binary resolution. It fails (non-zero exit)
+// only for things that are actually broken (a project config that doesn't
+// parse, an enabled ref that no longer resolves); everything else that's
+// merely ambiguous-but-working (multiple provider binary candidates, a shim
+// directory not on PATH) is a warning, printed but not fatal.
+func runDoctor(home string, stdout, stderr io.Writer) error {
+	broken := false
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+
+	if found, err := config.FindProjectConfig(cwd); err == nil {
+		fmt.Fprintf(stdout, "project config: OK (%s)\n", found.Path)
+		if _, err := packages.ResolveEnabled(home, found.Config.Workspace, found.Root, found.Config.EnabledPackages); err != nil {
+			fmt.Fprintf(stdout, "enabled packages: FAIL - %v\n", err)
+			broken = true
+		} else {
+			fmt.Fprintf(stdout, "enabled packages: OK (%d enabled)\n", len(found.Config.EnabledPackages))
+		}
+	} else if errors.Is(err, config.ErrProjectConfigNotFound) {
+		fmt.Fprintln(stdout, "project config: not inside a Lineage project (skipping enabled-package checks)")
+	} else {
+		fmt.Fprintf(stdout, "project config: FAIL - %v\n", err)
+		broken = true
+	}
+
+	shimsDir := config.ShimsDir(home)
+	pathEntries := filepath.SplitList(os.Getenv("PATH"))
+	shimIdx := pathIndexOf(pathEntries, shimsDir)
+	if shimIdx == -1 {
+		fmt.Fprintf(stdout, "shim PATH: WARN - %s is not on PATH; run `lineage install-shims`, then add that directory to PATH before your provider binaries\n", shimsDir)
+	} else {
+		fmt.Fprintf(stdout, "shim PATH: OK (%s is on PATH)\n", shimsDir)
+	}
+
+	for _, p := range provider.Known() {
+		candidates := provider.CandidateBinaries(p.Name, home)
+		switch len(candidates) {
+		case 0:
+			fmt.Fprintf(stdout, "provider %s: no real binary found on PATH (not installed, or set providers.%s.binary in .lineage/config.yaml)\n", p.Name, p.Name)
+			continue
+		case 1:
+			fmt.Fprintf(stdout, "provider %s: OK (%s)\n", p.Name, candidates[0])
+		default:
+			fmt.Fprintf(stdout, "provider %s: WARN - multiple candidates on PATH; the first one wins silently:\n", p.Name)
+			for _, c := range candidates {
+				fmt.Fprintf(stdout, "    %s\n", c)
+			}
+		}
+
+		if shimIdx == -1 {
+			continue
+		}
+		winnerIdx := pathIndexOf(pathEntries, filepath.Dir(candidates[0]))
+		if winnerIdx != -1 && winnerIdx < shimIdx {
+			fmt.Fprintf(stdout, "provider %s: WARN - the real binary at %s comes before the shim directory on PATH, so the shim never takes effect for this provider\n", p.Name, candidates[0])
+		}
+	}
+
+	if broken {
+		err := fmt.Errorf("lineage doctor found problems that need fixing")
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+	fmt.Fprintln(stdout, "\nresult: OK")
+	return nil
+}
+
+// pathIndexOf returns the index of dir within pathEntries (comparing
+// absolute paths, so relative and absolute forms of the same directory
+// match), or -1 if it isn't present.
+func pathIndexOf(pathEntries []string, dir string) int {
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		return -1
+	}
+	for i, entry := range pathEntries {
+		absEntry, err := filepath.Abs(entry)
+		if err == nil && absEntry == absDir {
+			return i
+		}
+	}
+	return -1
+}
+
 func printUsage(w io.Writer) {
 	fmt.Fprintln(w, strings.TrimSpace(fmt.Sprintf(`
 Lineage shareable agent runtime
@@ -642,6 +733,7 @@ Usage:
   lineage inspect <package-path-or-id>
   lineage run <%s> [--dry-run] [--yes] [-- provider args...]
   lineage install-shims
+  lineage doctor
 `, providerNameList())))
 }
 

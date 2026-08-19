@@ -518,3 +518,83 @@ func TestInspectShowsPackageWithoutEnabling(t *testing.T) {
 		t.Fatal("inspect must not create a project config or enable anything")
 	}
 }
+
+func TestDoctorOutsideProjectSkipsPackageChecks(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv(config.HomeEnv, home)
+	oldWd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(oldWd)
+	if err := os.Chdir(t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if err := Execute(nil, []string{"doctor"}, nil, &stdout, &stderr); err != nil {
+		t.Fatalf("doctor error = %v stderr=%s", err, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "not inside a Lineage project") {
+		t.Fatalf("doctor output = %q, want it to note it's outside a project", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "result: OK") {
+		t.Fatalf("doctor output = %q, want a clean result outside a project", stdout.String())
+	}
+}
+
+func TestDoctorFailsOnUnresolvableEnabledPackage(t *testing.T) {
+	tmp := t.TempDir()
+	home := filepath.Join(tmp, "home")
+	project := filepath.Join(tmp, "project")
+	if err := os.MkdirAll(project, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.DefaultProjectConfig()
+	cfg.EnabledPackages = []string{"./does-not-exist"}
+	if err := config.SaveProjectConfig(config.ProjectConfigPath(project), cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv(config.HomeEnv, home)
+	oldWd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(oldWd)
+	if err := os.Chdir(project); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	err = Execute(nil, []string{"doctor"}, nil, &stdout, &stderr)
+	if err == nil {
+		t.Fatal("doctor error = nil, want error for an unresolvable enabled package")
+	}
+	if !strings.Contains(stdout.String(), "enabled packages: FAIL") {
+		t.Fatalf("doctor output = %q, want a FAIL line for enabled packages", stdout.String())
+	}
+}
+
+func TestDoctorReportsEachKnownProvider(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv(config.HomeEnv, home)
+	oldWd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(oldWd)
+	if err := os.Chdir(t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if err := Execute(nil, []string{"doctor"}, nil, &stdout, &stderr); err != nil {
+		t.Fatalf("doctor error = %v stderr=%s", err, stderr.String())
+	}
+	for _, name := range []string{"claude", "codex"} {
+		if !strings.Contains(stdout.String(), "provider "+name+":") {
+			t.Fatalf("doctor output = %q, want a line for provider %s", stdout.String(), name)
+		}
+	}
+}

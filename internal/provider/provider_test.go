@@ -1,8 +1,10 @@
 package provider
 
 import (
+	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/lineage-dev/lineage/internal/config"
@@ -39,5 +41,46 @@ func TestResolveWithConfiguredBinary(t *testing.T) {
 	}
 	if len(plan.Args) != 1 || plan.Args[0] != "hello" {
 		t.Fatalf("Args = %#v", plan.Args)
+	}
+}
+
+func TestCandidateBinariesFindsMultipleAndSkipsShim(t *testing.T) {
+	home := t.TempDir()
+	dirA := t.TempDir()
+	dirB := t.TempDir()
+	shimDir := filepath.Join(home, "bin")
+	if err := os.MkdirAll(shimDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	writeExecutable(t, filepath.Join(dirA, "claude"))
+	writeExecutable(t, filepath.Join(dirB, "claude"))
+	writeExecutable(t, filepath.Join(shimDir, "claude"))
+
+	t.Setenv("PATH", strings.Join([]string{dirA, shimDir, dirB}, string(os.PathListSeparator)))
+
+	candidates := CandidateBinaries("claude", home)
+	if len(candidates) != 2 {
+		t.Fatalf("CandidateBinaries() = %#v, want 2 real candidates (shim excluded)", candidates)
+	}
+	if candidates[0] != filepath.Join(dirA, "claude") || candidates[1] != filepath.Join(dirB, "claude") {
+		t.Fatalf("CandidateBinaries() = %#v, want PATH order [%s, %s]", candidates, dirA, dirB)
+	}
+}
+
+func TestCandidateBinariesEmptyWhenNoneFound(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("PATH", t.TempDir())
+
+	candidates := CandidateBinaries("does-not-exist", home)
+	if len(candidates) != 0 {
+		t.Fatalf("CandidateBinaries() = %#v, want none", candidates)
+	}
+}
+
+func writeExecutable(t *testing.T, path string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
 	}
 }

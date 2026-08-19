@@ -103,3 +103,11 @@ All notable changes to Lineage will be documented here.
   workspace id — without enabling it).
 - Fixed a pre-existing rendering bug where `lineage help`/usage output
   contained literal tab characters instead of consistent indentation.
+- Added `lineage doctor`: checks project config validity (and that
+  every enabled ref still resolves), whether the shim directory is on
+  `PATH` and ordered before real provider binaries (a real binary
+  found first means the shim never takes effect), and warns when more
+  than one candidate binary exists for a provider on `PATH` — naming
+  every candidate, not just the one that currently wins silently.
+  Fails (non-zero exit) only for things that are actually broken;
+  ambiguous-but-working situations are warnings.

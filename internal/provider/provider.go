@@ -51,8 +51,24 @@ func Launch(plan Plan) error {
 }
 
 func findRealBinary(name, lineageHome string) (string, error) {
+	candidates := CandidateBinaries(name, lineageHome)
+	if len(candidates) == 0 {
+		return "", fmt.Errorf("real %s binary not found; set providers.%s.binary in .lineage/config.yaml", name, name)
+	}
+	return candidates[0], nil
+}
+
+// CandidateBinaries returns every executable named name found on PATH,
+// in PATH search order, skipping the lineage shim directory itself (the
+// same rule findRealBinary uses to pick the one it actually launches).
+// Used by `lineage doctor` to warn when more than one real binary exists
+// for a provider — findRealBinary picking the first one silently is
+// exactly the kind of ambiguity that's invisible until it picks wrong.
+func CandidateBinaries(name, lineageHome string) []string {
 	pathEnv := os.Getenv("PATH")
 	shims, _ := filepath.Abs(config.ShimsDir(lineageHome))
+
+	var candidates []string
 	for _, dir := range filepath.SplitList(pathEnv) {
 		absDir, err := filepath.Abs(dir)
 		if err == nil && absDir == shims {
@@ -67,9 +83,9 @@ func findRealBinary(name, lineageHome string) (string, error) {
 		if info.Mode()&0o111 == 0 {
 			continue
 		}
-		return candidate, nil
+		candidates = append(candidates, candidate)
 	}
-	return "", fmt.Errorf("real %s binary not found; set providers.%s.binary in .lineage/config.yaml", name, name)
+	return candidates
 }
 
 func IsShimPath(path, lineageHome string) bool {
