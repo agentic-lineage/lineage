@@ -99,7 +99,7 @@ func runInit(args []string, home string, stdout, stderr io.Writer) error {
 
 func runPackage(args []string, home string, stdout, stderr io.Writer) error {
 	if len(args) < 2 {
-		err := fmt.Errorf("usage: lineage package init <name> | lineage package validate <path> | lineage package export <path> [-o file.tgz] | lineage package import <file.tgz> [--as name]")
+		err := fmt.Errorf("usage: lineage package init <name> | lineage package validate <path> | lineage package export <path> [-o file.tgz] | lineage package import <file.tgz> [--as name] | lineage package publish <path> | lineage package pull <package-ref> [--as name]")
 		fmt.Fprintln(stderr, err)
 		return err
 	}
@@ -130,11 +130,83 @@ func runPackage(args []string, home string, stdout, stderr io.Writer) error {
 		return runPackageExport(args[1:], stdout, stderr)
 	case "import":
 		return runPackageImport(args[1:], home, stdout, stderr)
+	case "publish":
+		return runPackagePublish(args[1:], stdout, stderr)
+	case "pull":
+		return runPackagePull(args[1:], home, stdout, stderr)
 	default:
 		err := fmt.Errorf("unknown package command %q", args[0])
 		fmt.Fprintln(stderr, err)
 		return err
 	}
+}
+
+// registryConfigFromEnv reads registry location and publish credentials
+// from the environment rather than .lineage/config.yaml: a publish token is
+// a per-invocation secret, not project state that belongs in a committed
+// file. See docs/decisions/0012-v1-distribution-contract-and-receiver-activation.md.
+func registryConfigFromEnv() packages.RegistryConfig {
+	return packages.RegistryConfig{
+		URL:   os.Getenv("LINEAGE_REGISTRY_URL"),
+		Token: os.Getenv("LINEAGE_PUBLISH_TOKEN"),
+	}
+}
+
+func runPackagePublish(args []string, stdout, stderr io.Writer) error {
+	if len(args) != 1 {
+		err := fmt.Errorf("usage: lineage package publish <path>")
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+
+	result, err := packages.Publish(filepath.Clean(args[0]), registryConfigFromEnv())
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+
+	if result.AlreadyPublished {
+		fmt.Fprintf(stdout, "%s@%s is already published with this content (digest %s); nothing to do\n", result.Name, result.Version, result.Digest)
+		return nil
+	}
+	fmt.Fprintf(stdout, "published %s@%s (digest %s)\n", result.Name, result.Version, result.Digest)
+	return nil
+}
+
+func runPackagePull(args []string, home string, stdout, stderr io.Writer) error {
+	if len(args) < 1 {
+		err := fmt.Errorf("usage: lineage package pull <package-ref> [--as name]")
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+
+	ref := args[0]
+	asName := ""
+	for i := 1; i < len(args); i++ {
+		if args[i] == "--as" && i+1 < len(args) {
+			asName = args[i+1]
+			i++
+			continue
+		}
+		err := fmt.Errorf("usage: lineage package pull <package-ref> [--as name]")
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+
+	destParent := config.UserPackagesDir(home)
+	if err := os.MkdirAll(destParent, 0o755); err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+
+	name, err := packages.Pull(ref, registryConfigFromEnv(), destParent, asName)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+
+	fmt.Fprintf(stdout, "pulled package %s into %s\n", name, filepath.Join(destParent, name))
+	return nil
 }
 
 func runPackageImport(args []string, home string, stdout, stderr io.Writer) error {
@@ -827,6 +899,8 @@ Usage:
   lineage package validate <path>
   lineage package export <path> [-o file.tgz]
   lineage package import <file.tgz> [--as name]
+  lineage package publish <path>
+  lineage package pull <package-ref> [--as name]
   lineage enable <package-path-or-id>
   lineage disable <package-path-or-id>
   lineage list

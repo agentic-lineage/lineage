@@ -38,6 +38,8 @@ lineage package init <name>
 lineage package validate <path>
 lineage package export <path> [-o file.tgz]
 lineage package import <file.tgz> [--as name]
+lineage package publish <path>
+lineage package pull <package-ref> [--as name]
 lineage enable <package-path-or-id>
 lineage run claude --dry-run
 lineage run codex --dry-run
@@ -86,7 +88,7 @@ Install local shims when you want commands such as `claude` or `codex` to enter 
 lineage install-shims
 ```
 
-Share a package with someone else:
+Share a package as a file:
 
 ```bash
 lineage package validate ./resume-workflow
@@ -99,6 +101,24 @@ On the receiving end:
 lineage package import resume-workflow.tgz
 lineage enable resume-workflow
 ```
+
+Or publish it to the Lineage registry instead of passing a file around:
+
+```bash
+export LINEAGE_PUBLISH_TOKEN=...  # ask a maintainer for one, tied to your publisher id
+lineage package publish ./resume-workflow
+```
+
+On the receiving end, pull it straight from the registry:
+
+```bash
+lineage package pull resume-workflow
+lineage enable resume-workflow
+```
+
+`lineage package pull` fetches `resume-workflow` (or `resume-workflow@0.2.0` for an exact version), verifies its content digest, and imports it exactly like `package import` would - see [docs/decisions/0012-v1-distribution-contract-and-receiver-activation.md](docs/decisions/0012-v1-distribution-contract-and-receiver-activation.md) for how the registry is structured.
+
+The first publish of a package name claims it for your publisher id. To ship an update, bump `version` in `lineage.yaml` and run `lineage package publish` again with the same token - the registry accepts it because you're still the recorded owner of that name; a different publisher's token would be rejected.
 
 ## Safety Principles
 
