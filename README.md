@@ -35,11 +35,16 @@ These folders are intentionally plain. A receiver should be able to open the pac
 lineage init user
 lineage init workspace <name>
 lineage package init <name>
+lineage package validate <path>
+lineage package export <path> [-o file.tgz]
+lineage package import <file.tgz> [--as name]
 lineage enable <package-path-or-id>
 lineage run claude --dry-run
 lineage run codex --dry-run
 lineage install-shims
 ```
+
+The first time `lineage run` would actually stage files for a provider, it shows what it's about to create or change and asks for confirmation; pass `--yes`/`-y` to skip the prompt in scripts. `--dry-run` never writes anything.
 
 Project configuration lives at `.lineage/config.yaml`.
 
@@ -79,6 +84,20 @@ Install local shims when you want commands such as `claude` or `codex` to enter 
 
 ```bash
 lineage install-shims
+```
+
+Share a package with someone else:
+
+```bash
+lineage package validate ./resume-workflow
+lineage package export ./resume-workflow -o resume-workflow.tgz
+```
+
+On the receiving end:
+
+```bash
+lineage package import resume-workflow.tgz
+lineage enable resume-workflow
 ```
 
 ## Safety Principles

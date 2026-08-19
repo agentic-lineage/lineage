@@ -15,12 +15,16 @@ Lineage uses a lean, goal-based development process.
 
 Milestones are goals, not dates.
 
-Current milestone style:
+Current milestones (see the GitHub Milestones page for the authoritative, up-to-date list):
 
+- `Goal: Durable runtime foundations`
 - `Goal: Safe package round trip`
 - `Goal: Receiver setup experience`
-- `Goal: Durable runtime foundations`
 - `Goal: Provider and CI confidence`
+- `Goal: Package materialization`
+- `Goal: Add providers`
+- `Goal: Workflow execution`
+- `Goal: CLI completeness`
 
 A milestone is done when its issues prove the goal works well enough to trust, not when a calendar date arrives.
 
