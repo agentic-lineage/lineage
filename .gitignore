@@ -1,8 +1,51 @@
-bin/
-dist/
+# Build output
+/bin/
+/dist/
+
+# Go build/test artifacts
+*.test
+*.out
 coverage.out
-.DS_Store
-.lineage/
+coverage.html
+
+# Go workspace files (this repo is a single module, not a multi-module
+# workspace; a go.work file here almost always means a local experiment,
+# not something to commit)
+go.work
+go.work.sum
+
+# Note: vendor/ is intentionally tracked, not ignored — dependencies are
+# vendored for offline-safe builds. Do not add it here.
+
+# Environment and secrets
 .env
 .env.*
 !.env.example
+
+# Lineage's own local runtime state (created when the CLI is run from a
+# checkout without LINEAGE_HOME set) and any local, untracked working
+# notes kept under it. Never meant to be committed.
+.lineage/
+
+# Editors and IDEs
+.vscode/
+.idea/
+*.iml
+.fleet/
+
+# OS cruft
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Editor swap/backup files
+*.swp
+*.swo
+*~
+*.bak
+
+# Logs and temp files
+*.log
+tmp/
+*.tmp
