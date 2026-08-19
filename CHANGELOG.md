@@ -101,8 +101,6 @@ All notable changes to Lineage will be documented here.
   inspect <ref>` (manifest, discovered contents, digest, and
   capabilities for any resolvable package — project path, user id, or
   workspace id — without enabling it).
-- Fixed a pre-existing rendering bug where `lineage help`/usage output
-  contained literal tab characters instead of consistent indentation.
 - Added `lineage doctor`: checks project config validity (and that
   every enabled ref still resolves), whether the shim directory is on
   `PATH` and ordered before real provider binaries (a real binary
@@ -111,3 +109,19 @@ All notable changes to Lineage will be documented here.
   every candidate, not just the one that currently wins silently.
   Fails (non-zero exit) only for things that are actually broken;
   ambiguous-but-working situations are warnings.
+- `WORKFLOW.md` can now declare an ordered `steps` list (YAML
+  frontmatter, the same convention `SKILL.md` already uses) naming
+  skills within the same package. `lineage package validate` checks
+  every step resolves to a real skill.
+- Added `lineage workflow run <workflow-name> <provider> [--dry-run]
+  [--yes] [-- provider args...]`: finds which enabled package declares
+  the workflow and materializes *only* its steps — not the full
+  enabled package set — in order, then hands off to the provider. The
+  provider's generated context file explicitly lists the active
+  workflow and its ordered steps. Same permission-gate/`--dry-run`
+  behavior as `lineage run`; a plain `lineage run` afterward correctly
+  restores the full enabled package set, since both share the same
+  per-provider materialization state.
+- Fixed a rendering bug where `lineage help`/usage output for several
+  commands contained literal tab characters instead of consistent
+  indentation.
