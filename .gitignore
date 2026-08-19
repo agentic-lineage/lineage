@@ -6,4 +6,3 @@ coverage.out
 .env
 .env.*
 !.env.example
-docs/v1-distribution-plan.md
