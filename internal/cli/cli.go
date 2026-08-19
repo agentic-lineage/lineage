@@ -37,6 +37,12 @@ func Execute(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 		return runPackage(args[1:], home, stdout, stderr)
 	case "enable":
 		return runEnable(args[1:], home, stdout, stderr)
+	case "list":
+		return runList(home, stdout, stderr)
+	case "disable":
+		return runDisable(args[1:], home, stdout, stderr)
+	case "inspect":
+		return runInspect(args[1:], home, stdout, stderr)
 	case "run":
 		return runProvider(ctx, args[1:], home, stdin, stdout, stderr)
 	case "install-shims":
@@ -363,6 +369,164 @@ func runEnable(args []string, home string, stdout, stderr io.Writer) error {
 	return nil
 }
 
+func runList(home string, stdout, stderr io.Writer) error {
+	cwd, err := os.Getwd()
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+	found, err := config.FindProjectConfig(cwd)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+
+	if len(found.Config.EnabledPackages) == 0 {
+		fmt.Fprintln(stdout, "no packages enabled")
+		return nil
+	}
+
+	resolved, err := packages.ResolveEnabled(home, found.Config.Workspace, found.Root, found.Config.EnabledPackages)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+	for _, pkg := range resolved {
+		fmt.Fprintf(stdout, "%s@%s  %s\n", pkg.Manifest.Name, pkg.Manifest.Version, pkg.Digest)
+	}
+	return nil
+}
+
+func runDisable(args []string, home string, stdout, stderr io.Writer) error {
+	if len(args) != 1 {
+		err := fmt.Errorf("usage: lineage disable <package-path-or-id>")
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+	ref := args[0]
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+	found, err := config.FindProjectConfig(cwd)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+
+	if !contains(found.Config.EnabledPackages, ref) {
+		err := fmt.Errorf("package %q is not enabled in %s", ref, found.Path)
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+
+	newEnabled := make([]string, 0, len(found.Config.EnabledPackages)-1)
+	for _, r := range found.Config.EnabledPackages {
+		if r != ref {
+			newEnabled = append(newEnabled, r)
+		}
+	}
+
+	resolved, err := packages.ResolveEnabled(home, found.Config.Workspace, found.Root, newEnabled)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+
+	// Re-materialize for every provider that has ever been materialized in
+	// this project, so disabling actually removes what was staged - Apply
+	// already reconciles to exactly the package set it's given, removing
+	// anything no longer desired. A provider that was never materialized
+	// here doesn't get a state file created just because something else
+	// was disabled.
+	for _, p := range provider.Known() {
+		hasState, err := materialize.HasState(found.Root, p.Name)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return err
+		}
+		if !hasState {
+			continue
+		}
+		if err := materialize.Apply(found.Root, p, resolved); err != nil {
+			fmt.Fprintln(stderr, err)
+			return err
+		}
+	}
+
+	found.Config.EnabledPackages = newEnabled
+	if err := config.SaveProjectConfig(found.Path, found.Config); err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+	fmt.Fprintf(stdout, "disabled package %s in %s\n", ref, found.Path)
+	return nil
+}
+
+func runInspect(args []string, home string, stdout, stderr io.Writer) error {
+	if len(args) != 1 {
+		err := fmt.Errorf("usage: lineage inspect <package-path-or-id>")
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+	ref := args[0]
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+
+	// Same resolution rule as enable: a "."/absolute ref is relative to
+	// where the user typed it, a bare id is looked up against the
+	// project/user/workspace search path anchored at the project root (if
+	// any - inspect works even outside a project, e.g. against a bare
+	// local path).
+	projectRoot := cwd
+	workspace := ""
+	if found, err := config.FindProjectConfig(cwd); err == nil {
+		projectRoot = found.Root
+		workspace = found.Config.Workspace
+	} else if !errors.Is(err, config.ErrProjectConfigNotFound) {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+
+	resolveRoot := projectRoot
+	if filepath.IsAbs(ref) || strings.HasPrefix(ref, ".") {
+		resolveRoot = cwd
+	}
+	path, err := packages.ResolveReference(home, workspace, resolveRoot, ref)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+
+	pkg, err := packages.Discover(path)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+
+	fmt.Fprintf(stdout, "package: %s@%s (schema %d)\n", pkg.Manifest.Name, pkg.Manifest.Version, pkg.Manifest.Schema)
+	fmt.Fprintf(stdout, "path: %s\n", pkg.Path)
+	fmt.Fprintf(stdout, "digest: %s\n", emptyValue(pkg.Digest))
+	if pkg.Manifest.Description != "" {
+		fmt.Fprintf(stdout, "description: %s\n", pkg.Manifest.Description)
+	}
+	fmt.Fprintf(stdout, "skills: %s\n", listValue(pkg.Skills))
+	fmt.Fprintf(stdout, "workflows: %s\n", listValue(pkg.Workflows))
+	fmt.Fprintf(stdout, "agents: %s\n", listValue(pkg.Agents))
+	fmt.Fprintf(stdout, "policies: %s\n", listValue(pkg.Policies))
+	fmt.Fprintf(stdout, "requires.skills: %s\n", listValue(pkg.Manifest.Requires.Skills))
+	fmt.Fprintf(stdout, "capabilities:\n")
+	fmt.Fprintf(stdout, "  filesystem.read: %s\n", listValue(pkg.Manifest.Capabilities.Filesystem.Read))
+	fmt.Fprintf(stdout, "  network: %s\n", listValue(pkg.Manifest.Capabilities.Network))
+	return nil
+}
+
 func runProvider(ctx context.Context, args []string, home string, stdin io.Reader, stdout, stderr io.Writer) error {
 	_ = ctx
 	if len(args) == 0 {
@@ -468,13 +632,16 @@ Lineage shareable agent runtime
 Usage:
   lineage init user
   lineage init workspace <name>
-	  lineage package init <name>
-	  lineage package validate <path>
-	  lineage package export <path> [-o file.tgz]
-	  lineage package import <file.tgz> [--as name]
-	  lineage enable <package-path-or-id>
-	  lineage run <%s> [--dry-run] [--yes] [-- provider args...]
-	  lineage install-shims
+  lineage package init <name>
+  lineage package validate <path>
+  lineage package export <path> [-o file.tgz]
+  lineage package import <file.tgz> [--as name]
+  lineage enable <package-path-or-id>
+  lineage disable <package-path-or-id>
+  lineage list
+  lineage inspect <package-path-or-id>
+  lineage run <%s> [--dry-run] [--yes] [-- provider args...]
+  lineage install-shims
 `, providerNameList())))
 }
 

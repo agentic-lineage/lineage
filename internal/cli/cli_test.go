@@ -405,3 +405,116 @@ func TestPackageExportThenImportRoundTrip(t *testing.T) {
 		t.Fatalf("imported digest = %q, want %q", imported.Digest, original.Digest)
 	}
 }
+
+func TestListShowsEnabledPackages(t *testing.T) {
+	setUpEnabledProject(t)
+
+	var stdout, stderr bytes.Buffer
+	if err := Execute(nil, []string{"list"}, nil, &stdout, &stderr); err != nil {
+		t.Fatalf("list error = %v stderr=%s", err, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "agent-pack@0.1.0") {
+		t.Fatalf("list output = %q, want it to include the enabled package", stdout.String())
+	}
+}
+
+func TestListWithNoEnabledPackagesSaysSo(t *testing.T) {
+	tmp := t.TempDir()
+	home := filepath.Join(tmp, "home")
+	project := filepath.Join(tmp, "project")
+	if err := os.MkdirAll(project, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := config.SaveProjectConfig(config.ProjectConfigPath(project), config.DefaultProjectConfig()); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv(config.HomeEnv, home)
+	oldWd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(oldWd)
+	if err := os.Chdir(project); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if err := Execute(nil, []string{"list"}, nil, &stdout, &stderr); err != nil {
+		t.Fatalf("list error = %v stderr=%s", err, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "no packages enabled") {
+		t.Fatalf("list output = %q, want a clear empty message", stdout.String())
+	}
+}
+
+func TestDisableCleansUpMaterializedContent(t *testing.T) {
+	project, _ := setUpEnabledProject(t)
+
+	var stdout, stderr bytes.Buffer
+	if err := Execute(nil, []string{"run", "claude", "--yes"}, nil, &stdout, &stderr); err != nil {
+		t.Fatalf("run error = %v stderr=%s", err, stderr.String())
+	}
+	if _, err := os.Stat(filepath.Join(project, ".claude", "skills", "agent-pack-hello")); err != nil {
+		t.Fatalf("expected materialized skill before disable: %v", err)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if err := Execute(nil, []string{"disable", "./agent-pack"}, nil, &stdout, &stderr); err != nil {
+		t.Fatalf("disable error = %v stderr=%s", err, stderr.String())
+	}
+	if _, err := os.Stat(filepath.Join(project, ".claude", "skills", "agent-pack-hello")); !os.IsNotExist(err) {
+		t.Fatalf("expected staged skill removed after disable, stat err = %v", err)
+	}
+
+	cfg, err := config.LoadProjectConfig(config.ProjectConfigPath(project))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if contains(cfg.EnabledPackages, "./agent-pack") {
+		t.Fatalf("EnabledPackages = %#v, want ./agent-pack removed", cfg.EnabledPackages)
+	}
+}
+
+func TestDisableUnknownRefFails(t *testing.T) {
+	setUpEnabledProject(t)
+
+	var stdout, stderr bytes.Buffer
+	err := Execute(nil, []string{"disable", "./not-enabled"}, nil, &stdout, &stderr)
+	if err == nil {
+		t.Fatal("disable error = nil, want error for a ref that isn't enabled")
+	}
+}
+
+func TestInspectShowsPackageWithoutEnabling(t *testing.T) {
+	tmp := t.TempDir()
+	home := filepath.Join(tmp, "home")
+	pkgDir := filepath.Join(tmp, "standalone-pack")
+	if err := packages.InitPackage(pkgDir, "standalone-pack"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(pkgDir, "skills", "review"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pkgDir, "skills", "review", "SKILL.md"), []byte("# Review"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(config.HomeEnv, home)
+
+	var stdout, stderr bytes.Buffer
+	if err := Execute(nil, []string{"inspect", pkgDir}, nil, &stdout, &stderr); err != nil {
+		t.Fatalf("inspect error = %v stderr=%s", err, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "standalone-pack@0.1.0") {
+		t.Fatalf("inspect output = %q, want package identity", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "skills: review") {
+		t.Fatalf("inspect output = %q, want discovered skills", stdout.String())
+	}
+
+	cfgPath := config.ProjectConfigPath(filepath.Dir(pkgDir))
+	if _, err := os.Stat(cfgPath); !os.IsNotExist(err) {
+		t.Fatal("inspect must not create a project config or enable anything")
+	}
+}

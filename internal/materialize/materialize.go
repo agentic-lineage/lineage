@@ -36,6 +36,21 @@ func statePath(projectRoot, providerName string) string {
 	return filepath.Join(projectRoot, stateDirName, "materialized-"+providerName+".json")
 }
 
+// HasState reports whether a provider has ever been materialized for this
+// project — i.e. whether Apply has run for it before. Used to decide which
+// providers need re-materializing after a package is disabled, without
+// creating a state file for a provider that was never used.
+func HasState(projectRoot, providerName string) (bool, error) {
+	_, err := os.Stat(statePath(projectRoot, providerName))
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, err
+}
+
 // Apply stages every skill from pkgs into adapter.SkillsDir and refreshes
 // the generated section of adapter.ContextFile describing active packages,
 // agents, policies, and workflows.

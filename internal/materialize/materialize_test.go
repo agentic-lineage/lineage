@@ -284,3 +284,42 @@ func containsAll(haystack string, needles ...string) bool {
 	}
 	return true
 }
+
+func TestHasStateFalseBeforeApply(t *testing.T) {
+	root := t.TempDir()
+	has, err := HasState(root, "claude")
+	if err != nil {
+		t.Fatalf("HasState() error = %v", err)
+	}
+	if has {
+		t.Fatal("HasState() = true before any Apply call, want false")
+	}
+}
+
+func TestHasStateTrueAfterApply(t *testing.T) {
+	root := t.TempDir()
+	pkg := buildTestPackage(t, "review-pack", "review")
+	claude, err := provider.Get("claude")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(root, claude, []packages.Package{pkg}); err != nil {
+		t.Fatal(err)
+	}
+
+	has, err := HasState(root, "claude")
+	if err != nil {
+		t.Fatalf("HasState() error = %v", err)
+	}
+	if !has {
+		t.Fatal("HasState() = false after Apply, want true")
+	}
+
+	has, err = HasState(root, "codex")
+	if err != nil {
+		t.Fatalf("HasState() error = %v", err)
+	}
+	if has {
+		t.Fatal("HasState(codex) = true, want false - only claude was ever applied")
+	}
+}

@@ -81,9 +81,9 @@ All notable changes to Lineage will be documented here.
 - Added `lineage package export <path> [-o file.tgz]`: produces a
   deterministic tar.gz archive (manifest + content directories, sorted
   order, normalized permissions and timestamps) after running the same
-	  checks as `lineage package validate` and refusing to export if any
-	  fail. Two exports of byte-identical package content always produce
-	  byte-identical archive bytes.
+  checks as `lineage package validate` and refusing to export if any
+  fail. Two exports of byte-identical package content always produce
+  byte-identical archive bytes.
 - Added `lineage package import <file.tgz> [--as name]`: extracts an
   exported archive into the user packages directory. The archive is
   treated as untrusted input — every entry path is checked against
@@ -93,3 +93,13 @@ All notable changes to Lineage will be documented here.
   than installed. Never overwrites an existing package; use `--as` to
   import under a different name. Export followed by import reproduces
   the original package exactly, verified by matching content digests.
+- Added `lineage list` (enabled packages in the current project, with
+  digest), `lineage disable <ref>` (removes a package and
+  re-materializes for every provider that has ever run in this
+  project, so disabling actually cleans up staged skills instead of
+  just editing config and leaving stale files behind), and `lineage
+  inspect <ref>` (manifest, discovered contents, digest, and
+  capabilities for any resolvable package — project path, user id, or
+  workspace id — without enabling it).
+- Fixed a pre-existing rendering bug where `lineage help`/usage output
+  contained literal tab characters instead of consistent indentation.
