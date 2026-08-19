@@ -468,13 +468,13 @@ Lineage shareable agent runtime
 Usage:
   lineage init user
   lineage init workspace <name>
-  lineage package init <name>
-  lineage package validate <path>
-  lineage package export <path> [-o file.tgz]
-  lineage package import <file.tgz> [--as name]
-  lineage enable <package-path-or-id>
-  lineage run <%s> [--dry-run] [--yes] [-- provider args...]
-  lineage install-shims
+	  lineage package init <name>
+	  lineage package validate <path>
+	  lineage package export <path> [-o file.tgz]
+	  lineage package import <file.tgz> [--as name]
+	  lineage enable <package-path-or-id>
+	  lineage run <%s> [--dry-run] [--yes] [-- provider args...]
+	  lineage install-shims
 `, providerNameList())))
 }
 

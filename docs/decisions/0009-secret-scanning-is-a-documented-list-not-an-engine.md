@@ -6,7 +6,7 @@ Date: 2026-08-19
 
 ## Context
 
-The README, `SECURITY.md`, and the `lineage-package-safety` skill all state that Lineage shouldn't make it easy to accidentally distribute credentials, but none of it was backed by code. A full secret-scanning engine (entropy analysis, broad pattern libraries, ML-based detection) is a substantial project with a real false-positive-rate tuning problem, and building one wasn't a prerequisite for making the existing safety principles true rather than aspirational.
+The README, `SECURITY.md`, and the `lineage-package-security-guardrails` skill all state that Lineage shouldn't make it easy to accidentally distribute credentials, but none of it was backed by code. A full secret-scanning engine (entropy analysis, broad pattern libraries, ML-based detection) is a substantial project with a real false-positive-rate tuning problem, and building one wasn't a prerequisite for making the existing safety principles true rather than aspirational.
 
 ## Decision
 
