@@ -39,3 +39,4 @@ Each record should include:
 - [0009 Secret Scanning Is A Documented Allow/Denylist, Not A General Engine](0009-secret-scanning-is-a-documented-list-not-an-engine.md)
 - [0010 Path Safety Only Applies To Package-Controlled Input, Not User-Typed Paths](0010-path-safety-only-applies-to-package-controlled-input.md)
 - [0011 Export/Import Treats Archives As Untrusted Input, With No Signing In V1](0011-export-import-treats-archives-as-untrusted-input.md)
+- [0012 V1 Distribution Contract And Receiver Activation](0012-v1-distribution-contract-and-receiver-activation.md)
