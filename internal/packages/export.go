@@ -31,8 +31,9 @@ func Export(dir string, w io.Writer) error {
 	if err != nil {
 		return err
 	}
-	if !report.Passed() {
-		return fmt.Errorf("package failed validation, refusing to export (%d error(s)); run `lineage package validate` for details", len(report.Errors))
+	portability := NewPortabilityReport(report)
+	if portability.HasBlockers() {
+		return fmt.Errorf("package has unresolved portability blockers, refusing to export (%d blocker(s)); run `lineage package validate` for details", len(portability.Blockers))
 	}
 
 	files, err := contentFiles(dir)

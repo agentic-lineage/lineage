@@ -373,13 +373,21 @@ func runPackageExport(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 
+	report, err := packages.Validate(dir)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+	portability := packages.NewPortabilityReport(report)
+	packages.WritePortabilityReport(stdout, portability)
+	if portability.HasBlockers() {
+		err := fmt.Errorf("package has unresolved portability blockers, refusing to export (%d blocker(s)); run `lineage package validate` for details", len(portability.Blockers))
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+
 	if outPath == "" {
-		manifest, err := packages.LoadManifest(dir)
-		if err != nil {
-			fmt.Fprintln(stderr, err)
-			return err
-		}
-		outPath = fmt.Sprintf("%s-%s.tgz", manifest.Name, manifest.Version)
+		outPath = fmt.Sprintf("%s-%s.tgz", report.Manifest.Name, report.Manifest.Version)
 	}
 
 	f, err := os.Create(outPath)
@@ -439,6 +447,7 @@ func runPackageValidate(dir string, yamlOutput bool, stdout, stderr io.Writer) e
 	fmt.Fprintf(stdout, "capabilities:\n")
 	fmt.Fprintf(stdout, "  filesystem.read: %s\n", listValue(report.Manifest.Capabilities.Filesystem.Read))
 	fmt.Fprintf(stdout, "  network: %s\n", listValue(report.Manifest.Capabilities.Network))
+	packages.WritePortabilityReport(stdout, packages.NewPortabilityReport(report))
 
 	if len(report.Notes) > 0 {
 		fmt.Fprintf(stdout, "notes:\n")

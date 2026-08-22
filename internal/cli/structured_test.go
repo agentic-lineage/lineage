@@ -62,6 +62,9 @@ func TestPackageValidateYAMLReportsFullPackage(t *testing.T) {
 	if len(report.Errors) != 0 {
 		t.Errorf("report.Errors = %v, want none", report.Errors)
 	}
+	if report.Portability == nil || report.Portability.Status != "PASS" {
+		t.Errorf("report.Portability = %+v, want PASS portability report", report.Portability)
+	}
 }
 
 func TestPackageValidateYAMLFailureExitsNonZeroWithErrors(t *testing.T) {
@@ -94,6 +97,9 @@ func TestPackageValidateYAMLFailureExitsNonZeroWithErrors(t *testing.T) {
 	}
 	if len(report.Errors) == 0 {
 		t.Error("report.Errors is empty, want the missing-export error listed")
+	}
+	if report.Portability == nil || report.Portability.Status != "BLOCKED" {
+		t.Errorf("report.Portability = %+v, want BLOCKED portability report", report.Portability)
 	}
 }
 

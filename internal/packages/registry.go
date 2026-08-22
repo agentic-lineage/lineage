@@ -55,8 +55,9 @@ func Publish(dir string, cfg RegistryConfig) (PublishResult, error) {
 	if err != nil {
 		return PublishResult{}, err
 	}
-	if !report.Passed() {
-		return PublishResult{}, fmt.Errorf("package failed validation, refusing to publish (%d error(s)); run `lineage package validate` for details", len(report.Errors))
+	portability := NewPortabilityReport(report)
+	if portability.HasBlockers() {
+		return PublishResult{}, fmt.Errorf("package has unresolved portability blockers, refusing to publish (%d blocker(s)); run `lineage package validate` for details", len(portability.Blockers))
 	}
 	if cfg.Token == "" {
 		return PublishResult{}, fmt.Errorf("no publish token configured; set LINEAGE_PUBLISH_TOKEN")

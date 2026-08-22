@@ -18,21 +18,22 @@ import (
 // fails to discover cleanly; inspect has no pass/fail result) rather than
 // given a placeholder value that would look like real data.
 type PackageReport struct {
-	Name           string                    `yaml:"name"`
-	Version        string                    `yaml:"version"`
-	Schema         int                       `yaml:"schema"`
-	Path           string                    `yaml:"path,omitempty"`
-	Digest         string                    `yaml:"digest,omitempty"`
-	Description    string                    `yaml:"description,omitempty"`
-	Skills         []string                  `yaml:"skills,omitempty"`
-	Workflows      []string                  `yaml:"workflows,omitempty"`
-	Agents         []string                  `yaml:"agents,omitempty"`
-	Policies       []string                  `yaml:"policies,omitempty"`
-	RequiredSkills []string                  `yaml:"required_skills"`
-	Providers      []string                  `yaml:"providers"`
-	Capabilities   PackageReportCapabilities `yaml:"capabilities"`
-	Notes          []string                  `yaml:"notes,omitempty"`
-	Errors         []string                  `yaml:"errors,omitempty"`
+	Name           string                      `yaml:"name"`
+	Version        string                      `yaml:"version"`
+	Schema         int                         `yaml:"schema"`
+	Path           string                      `yaml:"path,omitempty"`
+	Digest         string                      `yaml:"digest,omitempty"`
+	Description    string                      `yaml:"description,omitempty"`
+	Skills         []string                    `yaml:"skills,omitempty"`
+	Workflows      []string                    `yaml:"workflows,omitempty"`
+	Agents         []string                    `yaml:"agents,omitempty"`
+	Policies       []string                    `yaml:"policies,omitempty"`
+	RequiredSkills []string                    `yaml:"required_skills"`
+	Providers      []string                    `yaml:"providers"`
+	Capabilities   PackageReportCapabilities   `yaml:"capabilities"`
+	Portability    *packages.PortabilityReport `yaml:"portability,omitempty"`
+	Notes          []string                    `yaml:"notes,omitempty"`
+	Errors         []string                    `yaml:"errors,omitempty"`
 	// Result is only meaningful for validate ("pass"/"fail"); inspect
 	// performs no validation, so it leaves this empty and omitted.
 	Result string `yaml:"result,omitempty"`
@@ -105,6 +106,8 @@ func validateReport(report packages.ValidateReport, discovered *packages.Package
 		Errors: nonNil(report.Errors),
 		Result: result,
 	}
+	portability := packages.NewPortabilityReport(report)
+	pr.Portability = &portability
 	if discovered != nil {
 		pr.Path = discovered.Path
 		pr.Skills = nonNil(discovered.Skills)
