@@ -22,4 +22,18 @@ jobs:
           go-version-file: go.mod
           cache: true
       - name: Test
-        run: go test ./...
+        run: go test -coverprofile=coverage.out ./...
+      - name: Coverage summary
+        run: |
+          go tool cover -func=coverage.out | tee coverage-summary.txt
+          {
+            echo "## Test Coverage"
+            echo '```'
+            cat coverage-summary.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload coverage profile
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.out
