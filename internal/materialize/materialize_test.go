@@ -377,3 +377,65 @@ func TestHasStateTrueAfterApply(t *testing.T) {
 		t.Fatal("HasState(codex) = true, want false - only claude was ever applied")
 	}
 }
+
+func TestApplyWritesCurrentSchema(t *testing.T) {
+	root := t.TempDir()
+	pkg := buildTestPackage(t, "review-pack", "review")
+	claude, err := provider.Get("claude")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(root, claude, []packages.Package{pkg}); err != nil {
+		t.Fatal(err)
+	}
+
+	data, err := os.ReadFile(statePath(root, "claude"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `"schema": 1`) {
+		t.Fatalf("materialized state = %s, want a schema field set to %d", data, currentStateSchema)
+	}
+}
+
+func TestNeedsApprovalDefaultsMissingSchemaToCurrent(t *testing.T) {
+	root := t.TempDir()
+	pkg := buildTestPackage(t, "review-pack", "review")
+	adapter := provider.Provider{Name: "claude", SkillsDir: filepath.Join(".claude", "skills"), ContextFile: "CLAUDE.md"}
+
+	path := statePath(root, "claude")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	rel := filepath.Join(adapter.SkillsDir, pkg.Manifest.Name+"-"+pkg.Skills[0])
+	legacy := `{"skill_dirs":["` + filepath.ToSlash(rel) + `"]}`
+	if err := os.WriteFile(path, []byte(legacy), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	needs, err := NeedsApproval(root, adapter, []packages.Package{pkg})
+	if err != nil {
+		t.Fatalf("NeedsApproval() error = %v", err)
+	}
+	if needs {
+		t.Fatal("NeedsApproval() = true against a pre-schema state file that already matches, want false")
+	}
+}
+
+func TestNeedsApprovalRejectsUnsupportedSchema(t *testing.T) {
+	root := t.TempDir()
+	pkg := buildTestPackage(t, "review-pack", "review")
+	adapter := provider.Provider{Name: "claude", SkillsDir: filepath.Join(".claude", "skills"), ContextFile: "CLAUDE.md"}
+
+	path := statePath(root, "claude")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(`{"schema":99,"skill_dirs":[]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := NeedsApproval(root, adapter, []packages.Package{pkg}); err == nil {
+		t.Fatal("NeedsApproval() error = nil, want error for unsupported schema")
+	}
+}

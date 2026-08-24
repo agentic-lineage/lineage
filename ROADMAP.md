@@ -25,6 +25,10 @@ This roadmap is intentionally limited to the public local package runtime.
   package pages.
 - A portability report (blockers/warnings) computed during export and
   publish.
+- The `.lineage` directory (project- and user-level state) designed as a
+  deliberate whole — every file enumerated, schema versioning decided,
+  a gitignore default, and a regenerable-vs-authoritative classification
+  (#59, ADR 0015).
 
 ## Next
 
@@ -56,8 +60,6 @@ priority over new feature surface:
 
 ## Later
 
-- Design the `.lineage` artifact (project- and user-level state) as a
-  deliberate whole, rather than one field at a time (#59).
 - Broaden provider adapter coverage (Cursor, Windsurf, Auggie, Cline, Aider,
   GitHub Copilot) while keeping the core package format provider-neutral.
 - Add stronger capability enforcement if declarative capability visibility

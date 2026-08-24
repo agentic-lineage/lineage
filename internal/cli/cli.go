@@ -566,10 +566,12 @@ func enableRef(ref, home string, autoApprove bool, stdin *bufio.Reader, stdout, 
 	projectRoot := cwd
 	configPath := config.ProjectConfigPath(cwd)
 	cfg := config.DefaultProjectConfig()
+	isNewProject := true
 	if found, err := config.FindProjectConfig(cwd); err == nil {
 		projectRoot = found.Root
 		configPath = found.Path
 		cfg = found.Config
+		isNewProject = false
 	} else if !errors.Is(err, config.ErrProjectConfigNotFound) {
 		fmt.Fprintln(stderr, err)
 		return false, err
@@ -719,6 +721,18 @@ func enableRef(ref, home string, autoApprove bool, stdin *bufio.Reader, stdout, 
 	if err := config.SaveProjectConfig(configPath, cfg); err != nil {
 		fmt.Fprintln(stderr, err)
 		return false, err
+	}
+
+	// A project's .lineage/ mixes machine-local state (config.yaml's
+	// provider binary paths) with regenerable cache - it should never land
+	// in the receiver's repo. Only do this the first time a project gets a
+	// .lineage/ at all, so a receiver who deliberately removed the entry
+	// later isn't fought on every subsequent enable.
+	if isNewProject {
+		if err := config.EnsureGitignored(projectRoot); err != nil {
+			fmt.Fprintln(stderr, err)
+			return err
+		}
 	}
 
 	fmt.Fprintf(stdout, "enabled package %s in %s\n", storedRef, configPath)

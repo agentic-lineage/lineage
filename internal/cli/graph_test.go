@@ -126,6 +126,57 @@ func TestEnableTwiceAppendsSecondRecord(t *testing.T) {
 	}
 }
 
+func TestEnableCreatesGitignoreEntryForNewProject(t *testing.T) {
+	project, _ := setUpEnabledProject(t)
+
+	data, err := os.ReadFile(filepath.Join(project, ".gitignore"))
+	if err != nil {
+		t.Fatalf("read .gitignore: %v", err)
+	}
+	if !strings.Contains(string(data), ".lineage/") {
+		t.Fatalf(".gitignore = %q, want it to contain .lineage/", data)
+	}
+}
+
+func TestEnableTwiceDoesNotDuplicateGitignoreEntry(t *testing.T) {
+	project, _ := setUpEnabledProject(t)
+
+	var stdout, stderr bytes.Buffer
+	if err := Execute(nil, []string{"enable", "./agent-pack"}, nil, &stdout, &stderr); err != nil {
+		t.Fatalf("second enable error = %v stderr=%s", err, stderr.String())
+	}
+
+	data, err := os.ReadFile(filepath.Join(project, ".gitignore"))
+	if err != nil {
+		t.Fatalf("read .gitignore: %v", err)
+	}
+	if strings.Count(string(data), ".lineage/") != 1 {
+		t.Fatalf(".gitignore = %q, want exactly one .lineage/ entry", data)
+	}
+}
+
+func TestEnableDoesNotOverwriteReceiversRemovedGitignoreEntry(t *testing.T) {
+	project, _ := setUpEnabledProject(t)
+
+	gitignorePath := filepath.Join(project, ".gitignore")
+	if err := os.WriteFile(gitignorePath, []byte("node_modules/\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if err := Execute(nil, []string{"enable", "./agent-pack"}, nil, &stdout, &stderr); err != nil {
+		t.Fatalf("second enable error = %v stderr=%s", err, stderr.String())
+	}
+
+	data, err := os.ReadFile(gitignorePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "node_modules/\n" {
+		t.Fatalf(".gitignore = %q, want unchanged after a receiver removed the .lineage/ entry post-first-enable", data)
+	}
+}
+
 func TestGraphListHumanOutput(t *testing.T) {
 	setUpEnabledProject(t)
 
