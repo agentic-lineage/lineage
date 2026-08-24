@@ -70,7 +70,7 @@ This mirrors a decision Lineage already made about its own dev-time state: the r
 
 Per the issue's own framing: the package manifest format (ADR 0005) and materialization idempotency semantics (ADR 0008) are already decided and unchanged here. Content-addressed snapshots (issue #7) and lineage graph metadata (issue #6) were future capabilities when the issue was filed; both landed since as ADR 0014 and ADR 0013 respectively, and this decision enumerates them as already-settled rather than blocking on them.
 
-`lineage doctor`'s existing checks (project config validity, enabled-package resolution, shim PATH placement, provider binary resolution) now transitively cover `config.yaml`'s new schema field for free — `FindProjectConfig`/`LoadProjectConfig` reject an unsupported schema the same way they already reject unparseable YAML. Extending `doctor` to validate `materialized-<provider>.json` schema/staleness, `graph.json` integrity, and snapshot-store referential integrity (every object a manifest references still present) is real, separate work with its own design questions (what's a warning vs. a failure, whether `doctor` should offer to repair anything) — deferred to a follow-up rather than folded into this container spec.
+`lineage doctor`'s existing checks (project config validity, enabled-package resolution, shim PATH placement, provider binary resolution) now transitively cover `config.yaml`'s new schema field for free — `FindProjectConfig`/`LoadProjectConfig` reject an unsupported schema the same way they already reject unparseable YAML. Extending `doctor` to validate `materialized-<provider>.json` schema/staleness, `graph.json` integrity, and snapshot-store referential integrity (every object a manifest references still present) is real, separate work with its own design questions (what's a warning vs. a failure, whether `doctor` should offer to repair anything) — deferred to #200 rather than folded into this container spec.
 
 ## Consequences
 
@@ -78,6 +78,6 @@ Per the issue's own framing: the package manifest format (ADR 0005) and material
 
 ## Follow-Up
 
-- File (or link) a `lineage doctor` scope-extension issue covering `materialized-<provider>.json` schema/staleness, `graph.json` parseability, and snapshot-store referential integrity, per the "out of scope" note above.
+- #200 tracks the `lineage doctor` scope extension covering `materialized-<provider>.json` schema/staleness, `graph.json` parseability, and snapshot-store referential integrity, per the "out of scope" note above.
 - If `graph.json`'s array shape ever needs a breaking change, introduce a wrapping object with its own `schema` field at that point, per the schema-versioning decision above.
 - A future `lineage clean`-style command (regenerable-only cleanup) can use the regenerable/authoritative table above directly as its spec.
