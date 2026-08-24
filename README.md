@@ -198,13 +198,19 @@ lineage enable resume-workflow
 
 `lineage add` and `lineage package pull` accept `resume-workflow` for the latest version or `resume-workflow@0.2.0` for an exact version. Both verify the registry-reported digest against the package contents before keeping anything - see [docs/decisions/0012-v1-distribution-contract-and-receiver-activation.md](docs/decisions/0012-v1-distribution-contract-and-receiver-activation.md) for how the registry is structured.
 
-That same exact-ref form is also how you move a project back to a previous version - there's no separate `rollback` command yet ([#122](https://github.com/agentic-lineage/lineage/issues/122)), because pinning already covers it. The first time you pull that version, it's one command:
+That same exact-ref form is also how you move a project back to a previous version - there's no separate `rollback` command yet ([#122](https://github.com/agentic-lineage/lineage/issues/122)), because pinning already covers it. If that version is not already present locally, `lineage add` pulls it and then enables it for the current project:
 
 ```bash
 lineage add resume-workflow@0.1.0 --yes
 ```
 
-If a different version of the same package is already pulled locally (a package directory is keyed by name, not version), pulling another version under the same name is refused rather than silently overwritten - `lineage add`/`lineage package pull` report the local/requested digest mismatch and tell you to remove the existing copy first. Pull the exact version you want under a different local name instead, then enable that:
+The `enable` step is what changes the active version recorded in the project. If
+a different version of the same package is already pulled locally (a package
+directory is keyed by name, not version), pulling another version under the same
+name is refused rather than silently overwritten - `lineage add`/`lineage
+package pull` report the local/requested digest mismatch and tell you to remove
+the existing copy first. Pull the exact version you want under a different local
+name instead, then enable that local name:
 
 ```bash
 lineage package pull resume-workflow@0.1.0 --as resume-workflow-0.1.0

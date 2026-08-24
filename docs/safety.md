@@ -8,7 +8,12 @@ A Lineage package is a normal folder: skills, workflows, agents, policies, refer
 
 ## The Package Lifecycle
 
-A package passes through the same checks whether it was authored locally, imported from an archive, or pulled from the registry — later stages never trust an earlier stage's judgment call, they redo the check themselves:
+A package passes through stage-specific checks whether it was authored locally,
+imported from an archive, or pulled from the registry. Later stages do not trust
+an earlier stage's judgment call blindly: import re-runs full package
+validation after extraction, pull re-checks the registry-reported digest against
+downloaded content, and enable/materialize keep their own write prompts instead
+of treating validation as permission to write everywhere:
 
 ```
 author → validate → export/publish → import/pull → inspect → enable → materialize → run
@@ -17,7 +22,7 @@ author → validate → export/publish → import/pull → inspect → enable �
 - **Author**: `lineage package init` scaffolds the standard layout. Nothing is checked yet.
 - **Validate**: `lineage package validate <path>` runs every check below against the package as it sits on disk, without enabling or writing anything.
 - **Export/Publish**: `lineage package export`/`lineage package publish` refuse to run at all if `Validate` finds a blocking problem — a package that fails validation cannot leave the machine that authored it.
-- **Import/Pull**: `lineage package import <archive>`/`lineage package pull <ref>` treat the incoming content as fully untrusted regardless of source (ADR 0011) — a previously-valid export that was edited, corrupted, or substituted in transit gets caught here, not assumed safe because it parsed.
+- **Import/Pull**: `lineage package import <archive>`/`lineage package pull <ref>` treat incoming content as untrusted regardless of source (ADR 0011). Import checks archive entry paths before writing and re-runs full `Validate` on the extracted package. Pull verifies the downloaded content against the registry-reported digest before keeping it; package validation then applies to the imported package contents.
 - **Inspect**: `lineage inspect <ref>` shows a package's declared and discovered contents (manifest, skills/workflows/agents/policies, digest, declared capabilities) so a receiver can look before enabling.
 - **Enable**: `lineage enable <ref>` adds a package to the current project's `.lineage/config.yaml`. If the package declares setup (files/directories its workflow expects), the receiver sees exactly what would be created and must approve it first.
 - **Materialize**: `lineage run <provider>`/`lineage workflow run` stage the package's skills into the provider's own directory and write its generated context file — gated behind an explicit confirmation the first time a given package set would actually change anything on disk, and idempotent/reversible on every re-run (ADR 0008).
