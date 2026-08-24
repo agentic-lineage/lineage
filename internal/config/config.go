@@ -162,7 +162,7 @@ func EnsureGitignored(projectRoot string) error {
 	}
 	content += GitignoreEntry + "\n"
 
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+	if err := atomicfile.WriteFile(path, []byte(content), 0o644); err != nil {
 		return fmt.Errorf("write %s: %w", path, err)
 	}
 	return nil

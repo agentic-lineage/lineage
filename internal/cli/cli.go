@@ -731,7 +731,7 @@ func enableRef(ref, home string, autoApprove bool, stdin *bufio.Reader, stdout, 
 	if isNewProject {
 		if err := config.EnsureGitignored(projectRoot); err != nil {
 			fmt.Fprintln(stderr, err)
-			return err
+			return false, err
 		}
 	}
 
