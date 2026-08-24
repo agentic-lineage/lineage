@@ -90,7 +90,8 @@ To ship an update, bump `version` in `lineage.yaml` and run
 `lineage package publish` again. Run `lineage whoami` to check the active
 identity, or `lineage logout` to clear it. For non-interactive use, set
 `LINEAGE_PUBLISH_TOKEN` to a GitHub-issued token with `read:user` access instead
-of running `lineage login`.
+of running `lineage login`; publishing uses GitHub only to identify the
+publisher, so repository write scopes are not required.
 
 On the receiving end:
 
@@ -251,16 +252,12 @@ lineage enable resume-workflow
 - [Architecture and trust model](docs/architecture.md)
 - [Public docs and discoverability checklist](docs/discoverability.md)
 
-## Safety Principles
+## Safety
 
-- Packages should be inspectable before they are enabled.
-- Secrets, credentials, provider login state, and private machine-local files
-  should not be packaged.
-- Setup actions should be explicit and permission-gated.
-- Package behavior should be idempotent where possible.
-- Provider-specific behavior should stay behind clear adapter boundaries.
-- Declared capabilities are visible to receivers but are not a sandbox in this
-  build.
+Packages are meant to be inspected before they are enabled, and generated
+provider files can be previewed with `--dry-run` before they are written. The
+canonical safety model, including current checks, warnings, and non-goals, lives
+in [docs/safety.md](docs/safety.md).
 
 ## Development
 
