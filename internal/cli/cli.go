@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/agentic-lineage/lineage/internal/atomicfile"
 	"github.com/agentic-lineage/lineage/internal/auth"
 	"github.com/agentic-lineage/lineage/internal/config"
 	"github.com/agentic-lineage/lineage/internal/graph"
@@ -76,7 +77,7 @@ func Execute(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 	case "list":
 		return runList(home, stdout, stderr)
 	case "disable":
-		return runDisable(args[1:], home, stdout, stderr)
+		return runDisable(args[1:], home, in, stdout, stderr)
 	case "inspect":
 		return runInspect(args[1:], home, stdout, stderr)
 	case "graph":
@@ -127,6 +128,10 @@ func runInit(args []string, home string, stdout, stderr io.Writer) error {
 	case "workspace":
 		if len(args) != 2 {
 			err := fmt.Errorf("usage: lineage init workspace <name>")
+			fmt.Fprintln(stderr, err)
+			return err
+		}
+		if err := config.ValidateWorkspaceName(args[1]); err != nil {
 			fmt.Fprintln(stderr, err)
 			return err
 		}
@@ -413,20 +418,18 @@ func runPackageExport(args []string, stdout, stderr io.Writer) error {
 		outPath = fmt.Sprintf("%s-%s.tgz", report.Manifest.Name, report.Manifest.Version)
 	}
 
-	f, err := os.Create(outPath)
+	f, err := atomicfile.Create(outPath, 0o644)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return err
 	}
+	defer f.Close()
 
 	if err := packages.Export(dir, f); err != nil {
-		f.Close()
-		os.Remove(outPath)
 		fmt.Fprintln(stderr, err)
 		return err
 	}
-	if err := f.Close(); err != nil {
-		os.Remove(outPath)
+	if err := f.Commit(); err != nil {
 		fmt.Fprintln(stderr, err)
 		return err
 	}
@@ -541,18 +544,25 @@ func runEnable(args []string, home string, stdin *bufio.Reader, stdout, stderr i
 		fmt.Fprintln(stderr, err)
 		return err
 	}
-	return enableRef(ref, home, autoApprove, stdin, stdout, stderr)
+	_, err := enableRef(ref, home, autoApprove, stdin, stdout, stderr)
+	return err
 }
 
 // enableRef is runEnable's actual work, factored out so `lineage add`
 // (which pulls a package and then enables it in one command) shares the
 // exact same project-root resolution, dependency validation, and setup
 // handling instead of a second, drifting implementation.
-func enableRef(ref, home string, autoApprove bool, stdin *bufio.Reader, stdout, stderr io.Writer) error {
+//
+// The bool return reports whether the package actually ended up enabled: a
+// declined setup prompt is not an error (enableRef already printed why and
+// left the workspace unchanged), but it is also not success - callers like
+// runAdd need to tell the two apart instead of treating "no error" as
+// "enabled" and reporting readiness for a package that was never turned on.
+func enableRef(ref, home string, autoApprove bool, stdin *bufio.Reader, stdout, stderr io.Writer) (bool, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
 		fmt.Fprintln(stderr, err)
-		return err
+		return false, err
 	}
 
 	// Reuse the project config an enclosing `lineage run` would find (it
@@ -570,7 +580,7 @@ func enableRef(ref, home string, autoApprove bool, stdin *bufio.Reader, stdout, 
 		cfg = found.Config
 	} else if !errors.Is(err, config.ErrProjectConfigNotFound) {
 		fmt.Fprintln(stderr, err)
-		return err
+		return false, err
 	}
 
 	// A "./" or "../" style ref is relative to where the user typed it
@@ -587,7 +597,7 @@ func enableRef(ref, home string, autoApprove bool, stdin *bufio.Reader, stdout, 
 	resolvedPath, err := packages.ResolveReference(home, cfg.Workspace, resolveRoot, ref)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
-		return err
+		return false, err
 	}
 
 	// The config we're about to save lives at the project root, and
@@ -617,11 +627,11 @@ func enableRef(ref, home string, autoApprove bool, stdin *bufio.Reader, stdout, 
 	resolvedForValidation, err := packages.ResolveEnabled(home, cfg.Workspace, projectRoot, newEnabled)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
-		return err
+		return false, err
 	}
 	if err := packages.ValidateDependencies(resolvedForValidation); err != nil {
 		fmt.Fprintln(stderr, err)
-		return err
+		return false, err
 	}
 
 	// A package can declare local setup (#72) - tracker files or
@@ -632,12 +642,12 @@ func enableRef(ref, home string, autoApprove bool, stdin *bufio.Reader, stdout, 
 	manifest, err := packages.LoadManifest(resolvedPath)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
-		return err
+		return false, err
 	}
 	setupPlan, err := packages.PlanSetup(projectRoot, manifest.Setup)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
-		return err
+		return false, err
 	}
 	if setupPlan.NeedsAction() {
 		fmt.Fprintf(stdout, "%s wants to set up:\n", manifest.Name)
@@ -657,21 +667,24 @@ func enableRef(ref, home string, autoApprove bool, stdin *bufio.Reader, stdout, 
 			fmt.Fprint(stdout, "Create these? [y/N] ")
 			if !confirm(stdin) {
 				fmt.Fprintln(stdout, "not enabled - setup was declined. Nothing was created or changed.")
-				return nil
+				return false, nil
 			}
 		}
 		if err := packages.ApplySetup(projectRoot, setupPlan); err != nil {
 			fmt.Fprintln(stderr, err)
-			return err
+			return false, err
 		}
 		fmt.Fprintln(stdout, "setup complete.")
 	}
 
-	cfg.EnabledPackages = newEnabled
-	if err := config.SaveProjectConfig(configPath, cfg); err != nil {
-		fmt.Fprintln(stderr, err)
-		return err
-	}
+	// Everything from here on must succeed before config is saved: once
+	// SaveProjectConfig runs, the package is durably marked enabled, so any
+	// step that can still fail (digest computation, the snapshot, the graph
+	// append) has to happen first. Otherwise a failure here - e.g. a
+	// corrupt .lineage/graph.json from an earlier partial write - would
+	// report enable as failed while having already left the package
+	// enabled in config, with no way back short of manually editing the
+	// file.
 
 	// Record that this project's local environment now descends from
 	// manifest, so `lineage graph list` can later explain where it came
@@ -681,17 +694,17 @@ func enableRef(ref, home string, autoApprove bool, stdin *bufio.Reader, stdout, 
 	digest, err := packages.ComputeDigest(resolvedPath)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
-		return err
+		return false, err
 	}
 
 	// Also take a durable, content-addressed snapshot of exactly what was
-	// enabled (#7), so the graph record above can point at something that
+	// enabled (#7), so the graph record below can point at something that
 	// can later be inspected, copied, or reconstructed byte-for-byte
 	// instead of only naming a version.
 	_, snapshotID, err := snapshot.Create(home, resolvedPath)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
-		return err
+		return false, err
 	}
 
 	if _, err := graph.Append(projectRoot, graph.Record{
@@ -707,11 +720,17 @@ func enableRef(ref, home string, autoApprove bool, stdin *bufio.Reader, stdout, 
 		},
 	}); err != nil {
 		fmt.Fprintln(stderr, err)
-		return err
+		return false, err
+	}
+
+	cfg.EnabledPackages = newEnabled
+	if err := config.SaveProjectConfig(configPath, cfg); err != nil {
+		fmt.Fprintln(stderr, err)
+		return false, err
 	}
 
 	fmt.Fprintf(stdout, "enabled package %s in %s\n", storedRef, configPath)
-	return nil
+	return true, nil
 }
 
 // runAdd is the one-command receiver path (#77): pull a published package,
@@ -825,8 +844,15 @@ func runAdd(args []string, home string, stdin *bufio.Reader, stdout, stderr io.W
 	}
 
 	fmt.Fprintln(stdout)
-	if err := enableRef(name, home, autoApprove, stdin, stdout, stderr); err != nil {
+	enabled, err := enableRef(name, home, autoApprove, stdin, stdout, stderr)
+	if err != nil {
 		return err
+	}
+	if !enabled {
+		// enableRef already explained why (a declined setup prompt) and
+		// left the workspace unchanged - reporting readiness here would
+		// tell the user to run a package that was never actually enabled.
+		return nil
 	}
 
 	fmt.Fprintf(stdout, "\nReady. Run `lineage run <%s>` to use it.\n", providerNameList())
@@ -861,13 +887,30 @@ func runList(home string, stdout, stderr io.Writer) error {
 	return nil
 }
 
-func runDisable(args []string, home string, stdout, stderr io.Writer) error {
-	if len(args) != 1 {
-		err := fmt.Errorf("usage: lineage disable <package-path-or-id>")
+func runDisable(args []string, home string, stdin *bufio.Reader, stdout, stderr io.Writer) error {
+	if len(args) > 0 && isHelpFlag(args[0]) {
+		fmt.Fprintln(stdout, "usage: lineage disable <package-path-or-id> [--yes]\n\nDisable a package and re-materialize every provider that has ever run in this project, so the packages it staged are actually removed. Asks for confirmation before re-materializing unless --yes is passed.")
+		return nil
+	}
+	ref := ""
+	autoApprove := false
+	for _, a := range args {
+		if a == "--yes" || a == "-y" {
+			autoApprove = true
+			continue
+		}
+		if ref != "" {
+			err := fmt.Errorf("usage: lineage disable <package-path-or-id> [--yes]")
+			fmt.Fprintln(stderr, err)
+			return err
+		}
+		ref = a
+	}
+	if ref == "" {
+		err := fmt.Errorf("usage: lineage disable <package-path-or-id> [--yes]")
 		fmt.Fprintln(stderr, err)
 		return err
 	}
-	ref := args[0]
 
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -905,6 +948,8 @@ func runDisable(args []string, home string, stdout, stderr io.Writer) error {
 	// anything no longer desired. A provider that was never materialized
 	// here doesn't get a state file created just because something else
 	// was disabled.
+	var pending []provider.Provider
+	needsApproval := false
 	for _, p := range provider.Known() {
 		hasState, err := materialize.HasState(found.Root, p.Name)
 		if err != nil {
@@ -914,6 +959,36 @@ func runDisable(args []string, home string, stdout, stderr io.Writer) error {
 		if !hasState {
 			continue
 		}
+		pending = append(pending, p)
+		na, err := materialize.NeedsApproval(found.Root, p, resolved)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return err
+		}
+		if na {
+			needsApproval = true
+		}
+	}
+
+	// Re-materializing rewrites every provider's staged content, not just
+	// the package being disabled - the same "explicit confirmation before
+	// anything is written" gate `run`/`workflow run` already use, since
+	// this can otherwise silently rewrite other, still-enabled packages'
+	// staged content as a side effect of disabling one.
+	if needsApproval && !autoApprove {
+		names := make([]string, len(pending))
+		for i, p := range pending {
+			names[i] = p.Name
+		}
+		fmt.Fprintf(stdout, "Disabling %s will re-materialize the remaining enabled packages for: %s\n", ref, strings.Join(names, ", "))
+		fmt.Fprint(stdout, "Proceed? [y/N] ")
+		if !confirm(stdin) {
+			fmt.Fprintln(stdout, "aborted: disable was not approved. Nothing was changed.")
+			return nil
+		}
+	}
+
+	for _, p := range pending {
 		if err := materialize.Apply(found.Root, p, resolved); err != nil {
 			fmt.Fprintln(stderr, err)
 			return err

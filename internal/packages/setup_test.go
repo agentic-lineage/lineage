@@ -110,6 +110,46 @@ func TestApplySetupCreatesOnlyWhatsMissing(t *testing.T) {
 	}
 }
 
+// TestApplySetupDoesNotOverwriteFileCreatedAfterPlan covers a regression
+// where ApplySetup trusted PlanSetup's Exists snapshot instead of
+// re-checking at apply time. PlanSetup and ApplySetup are deliberately
+// split around a confirmation prompt (#72), so a file can legitimately be
+// created in that window - by the receiver, or by a second package. The
+// stale Exists=false from the plan must not cause ApplySetup to overwrite
+// whatever showed up there in the meantime.
+func TestApplySetupDoesNotOverwriteFileCreatedAfterPlan(t *testing.T) {
+	root := t.TempDir()
+	setup := Setup{
+		Files: []SetupFile{{Path: "notes/log.md", Template: "# Log\n"}},
+	}
+	plan, err := PlanSetup(root, setup)
+	if err != nil {
+		t.Fatalf("PlanSetup() error = %v", err)
+	}
+	if plan.Files[0].Exists {
+		t.Fatalf("plan.Files[0].Exists = %v, want false (file doesn't exist yet)", plan.Files[0].Exists)
+	}
+
+	// Simulate the race: the file gets created in the window between plan
+	// and apply.
+	if err := os.MkdirAll(filepath.Join(root, "notes"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mustWrite(t, filepath.Join(root, "notes", "log.md"), "written in the window between plan and apply\n")
+
+	if err := ApplySetup(root, plan); err != nil {
+		t.Fatalf("ApplySetup() error = %v", err)
+	}
+
+	got, err := os.ReadFile(filepath.Join(root, "notes", "log.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "written in the window between plan and apply\n" {
+		t.Errorf("notes/log.md content = %q, want the racing write preserved, not overwritten by the template", got)
+	}
+}
+
 func TestApplySetupIsIdempotent(t *testing.T) {
 	root := t.TempDir()
 	setup := Setup{

@@ -62,6 +62,46 @@ func TestScanForSecretsFlagsAWSKeyID(t *testing.T) {
 	}
 }
 
+func TestScanForSecretsFlagsAWSSessionKeyID(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "sts-pack")
+	if err := InitPackage(root, "sts-pack"); err != nil {
+		t.Fatal(err)
+	}
+	// Split for the same reason as the AKIA fixture above.
+	fakeSessionKeyID := "ASIA" + "ABCDEFGHIJKLMNOP"
+	mustWrite(t, filepath.Join(root, "references", "session.txt"), "aws_access_key_id = "+fakeSessionKeyID+"\n")
+
+	findings, err := ScanForSecrets(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasFindingForPath(findings, filepath.ToSlash(filepath.Join("references", "session.txt"))) {
+		t.Fatalf("findings = %#v, want a finding for the temporary STS key ID", findings)
+	}
+}
+
+func TestScanForSecretsCatchesContentInFilesOverSizeCap(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "big-pack")
+	if err := InitPackage(root, "big-pack"); err != nil {
+		t.Fatal(err)
+	}
+	// Split so this fixture's literal bytes never form a real key-shaped
+	// string in the source file itself (see the AWS key ID test above).
+	fakeAWSKeyID := "AKIA" + "ABCDEFGHIJKLMNOP"
+	var b strings.Builder
+	b.WriteString("aws_access_key_id = " + fakeAWSKeyID + "\n")
+	b.WriteString(strings.Repeat("x", 6<<20)) // padding past the 5MB scan cap
+	mustWrite(t, filepath.Join(root, "references", "vendor-bundle.txt"), b.String())
+
+	findings, err := ScanForSecrets(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasFindingForPath(findings, filepath.ToSlash(filepath.Join("references", "vendor-bundle.txt"))) {
+		t.Fatalf("findings = %#v, want a finding for content within the scanned prefix even though the file is over the size cap", findings)
+	}
+}
+
 func TestScanForSecretsIgnoresSafeContent(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "clean-pack")
 	if err := InitPackage(root, "clean-pack"); err != nil {

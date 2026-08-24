@@ -13,6 +13,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/agentic-lineage/lineage/internal/atomicfile"
 )
 
 const (
@@ -135,12 +137,9 @@ func ForPackage(projectRoot, name string) ([]Record, error) {
 
 func save(projectRoot string, records []Record) error {
 	path := statePath(projectRoot)
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
 	data, err := json.MarshalIndent(records, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0o644)
+	return atomicfile.WriteFile(path, data, 0o644)
 }

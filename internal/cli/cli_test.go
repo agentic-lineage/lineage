@@ -508,7 +508,10 @@ func TestDisableCleansUpMaterializedContent(t *testing.T) {
 
 	stdout.Reset()
 	stderr.Reset()
-	if err := Execute(nil, []string{"disable", "./agent-pack"}, nil, &stdout, &stderr); err != nil {
+	// --yes: disabling the only enabled package changes what's
+	// materialized, so it now goes through the same confirmation gate
+	// enable/run/workflow run already use (#160).
+	if err := Execute(nil, []string{"disable", "./agent-pack", "--yes"}, nil, &stdout, &stderr); err != nil {
 		t.Fatalf("disable error = %v stderr=%s", err, stderr.String())
 	}
 	if _, err := os.Stat(filepath.Join(project, ".claude", "skills", "agent-pack-hello")); !os.IsNotExist(err) {
@@ -521,6 +524,62 @@ func TestDisableCleansUpMaterializedContent(t *testing.T) {
 	}
 	if contains(cfg.EnabledPackages, "./agent-pack") {
 		t.Fatalf("EnabledPackages = %#v, want ./agent-pack removed", cfg.EnabledPackages)
+	}
+}
+
+// TestDisableRequiresConfirmationBeforeRematerializing covers a regression
+// where disable was the one mutating command with no confirmation gate at
+// all - every other command that writes staged files (enable, run,
+// workflow run) asks first. Declining must leave both the config and the
+// already-staged content completely untouched, the same as declining any
+// other prompt in this codebase.
+func TestDisableRequiresConfirmationBeforeRematerializing(t *testing.T) {
+	project, _ := setUpEnabledProject(t)
+
+	var stdout, stderr bytes.Buffer
+	if err := Execute(nil, []string{"run", "claude", "--yes"}, nil, &stdout, &stderr); err != nil {
+		t.Fatalf("run error = %v stderr=%s", err, stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	stdin := strings.NewReader("n\n")
+	if err := Execute(nil, []string{"disable", "./agent-pack"}, stdin, &stdout, &stderr); err != nil {
+		t.Fatalf("disable error = %v stderr=%s", err, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "aborted") {
+		t.Errorf("stdout = %q, want it to explain the disable was aborted", stdout.String())
+	}
+
+	if _, err := os.Stat(filepath.Join(project, ".claude", "skills", "agent-pack-hello")); err != nil {
+		t.Errorf("expected the staged skill to survive a declined disable: %v", err)
+	}
+	cfg, err := config.LoadProjectConfig(config.ProjectConfigPath(project))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !contains(cfg.EnabledPackages, "./agent-pack") {
+		t.Errorf("EnabledPackages = %#v, want ./agent-pack still enabled after declining", cfg.EnabledPackages)
+	}
+}
+
+func TestDisableAcceptsInteractiveConfirmation(t *testing.T) {
+	project, _ := setUpEnabledProject(t)
+
+	var stdout, stderr bytes.Buffer
+	if err := Execute(nil, []string{"run", "claude", "--yes"}, nil, &stdout, &stderr); err != nil {
+		t.Fatalf("run error = %v stderr=%s", err, stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	stdin := strings.NewReader("y\n")
+	if err := Execute(nil, []string{"disable", "./agent-pack"}, stdin, &stdout, &stderr); err != nil {
+		t.Fatalf("disable error = %v stderr=%s", err, stderr.String())
+	}
+
+	if _, err := os.Stat(filepath.Join(project, ".claude", "skills", "agent-pack-hello")); !os.IsNotExist(err) {
+		t.Errorf("expected staged skill removed after an approved disable, stat err = %v", err)
 	}
 }
 

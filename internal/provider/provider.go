@@ -95,6 +95,14 @@ func candidateBinariesFor(name, lineageHome, goos string) []string {
 			if !isWindows && info.Mode()&0o111 == 0 {
 				continue
 			}
+			// Directory-based exclusion above only catches a shim installed
+			// under this call's own lineageHome. A shim installed under a
+			// different LINEAGE_HOME earlier, or a stray copy anywhere else
+			// on PATH, would otherwise pass through as a "real" binary here
+			// - see looksLikeShim's doc comment for why that matters.
+			if looksLikeShim(candidate, name) {
+				continue
+			}
 			candidates = append(candidates, candidate)
 		}
 	}
@@ -115,6 +123,52 @@ func candidateExtensions(goos string) []string {
 		pathext = ".COM;.EXE;.BAT;.CMD"
 	}
 	return strings.Split(pathext, ";")
+}
+
+// shimHeaderPrefixes are the literal opening lines of every shim template
+// internal/shim generates. Duplicated here rather than imported, since
+// internal/shim already imports this package (provider.Known()) and this
+// package importing shim back would be a cycle.
+var shimHeaderPrefixes = []string{"#!/bin/sh", "@echo off"}
+
+// looksLikeShim reports whether the file at path is a lineage-generated
+// shim script for a provider named providerName, by content rather than
+// only by which directory it's in. Directory-based exclusion in
+// candidateBinariesFor only catches a shim installed under the current
+// call's own lineageHome; a shim installed under a *different*
+// LINEAGE_HOME (env var changed between when shims were installed and
+// when a later `lineage run` resolves the real binary), or a stray copy
+// of the shim script anywhere else on PATH, would otherwise pass through
+// as a legitimate "real" binary. Launching that would exec straight back
+// into `lineage run`, which resolves the same wrong candidate again: an
+// unbounded fork loop, with no self-detection anywhere else in this path.
+//
+// Requires both a matching header (the exact first line every shim
+// template starts with) and the literal "run <providerName>" marker the
+// shim body always contains, so an unrelated real script that merely
+// starts with "#!/bin/sh" - an extremely common shebang - doesn't false-
+// positive; it would also have to coincidentally contain that specific
+// marker text.
+func looksLikeShim(path, providerName string) bool {
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+
+	buf := make([]byte, 512)
+	n, _ := f.Read(buf)
+	head := string(buf[:n])
+
+	if !strings.Contains(head, "run "+providerName) {
+		return false
+	}
+	for _, prefix := range shimHeaderPrefixes {
+		if strings.HasPrefix(head, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 func IsShimPath(path, lineageHome string) bool {

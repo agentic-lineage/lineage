@@ -276,3 +276,12 @@ func TestPullReportsMissingRef(t *testing.T) {
 		t.Fatal("Pull() error = nil, want error for an unknown ref")
 	}
 }
+
+// TestRegistryClientHasTimeout covers #164: the metadata fetch and archive
+// download in Pull used http.DefaultClient, which has no timeout, so a hung
+// registry stalled `lineage package pull` indefinitely.
+func TestRegistryClientHasTimeout(t *testing.T) {
+	if got := registryClient().Timeout; got != registryRequestTimeout {
+		t.Fatalf("registryClient().Timeout = %v, want %v", got, registryRequestTimeout)
+	}
+}

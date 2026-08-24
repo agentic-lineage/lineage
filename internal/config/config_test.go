@@ -61,3 +61,28 @@ func TestFindProjectConfigMissing(t *testing.T) {
 		t.Fatal("FindProjectConfig() error = nil, want error")
 	}
 }
+
+// TestLoadProjectConfigNormalizesExplicitEmptyCollections covers #168: an
+// explicit `enabled_packages:` with no value unmarshals to nil, overwriting
+// the empty slice DefaultProjectConfig seeded. The two sibling map fields
+// were already guarded; this one was not.
+func TestLoadProjectConfigNormalizesExplicitEmptyCollections(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte("enabled_packages:\nprovider_preferences:\nproviders:\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := LoadProjectConfig(path)
+	if err != nil {
+		t.Fatalf("LoadProjectConfig() error = %v", err)
+	}
+	if cfg.EnabledPackages == nil {
+		t.Error("EnabledPackages = nil, want an empty slice like the sibling map fields get")
+	}
+	if cfg.ProviderPreferences == nil {
+		t.Error("ProviderPreferences = nil, want an empty map")
+	}
+	if cfg.Providers == nil {
+		t.Error("Providers = nil, want an empty map")
+	}
+}

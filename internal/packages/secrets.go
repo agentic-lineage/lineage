@@ -1,6 +1,7 @@
 package packages
 
 import (
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -15,9 +16,12 @@ type SecretFinding struct {
 	Reason string
 }
 
-// maxScannedFileSize caps how much of a file's content gets pattern-matched.
-// Secret-shaped strings are text and small; skipping large files avoids
-// reading big binaries into memory for no benefit.
+// maxScannedFileSize caps how much of a file's content gets pattern-matched:
+// the first maxScannedFileSize bytes, not the whole file. Secret-shaped
+// strings are text, small, and tend to appear early in a file (env var
+// assignments, key headers), so scanning a bounded prefix catches them in
+// large files too, without reading an arbitrarily large file fully into
+// memory.
 const maxScannedFileSize = 5 << 20 // 5MB
 
 // deniedFilenames are exact, case-insensitive filename matches that are
@@ -45,7 +49,9 @@ var deniedExtensions = []string{".pem", ".key", ".pfx", ".p12"}
 // are essentially never present in legitimate package source material.
 var secretContentPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`-----BEGIN [A-Z ]*PRIVATE KEY-----`),
-	regexp.MustCompile(`\bAKIA[0-9A-Z]{16}\b`),         // AWS access key ID
+	// AWS access key ID: AKIA is a long-lived user key, ASIA a temporary
+	// STS/assumed-role session key.
+	regexp.MustCompile(`\b(AKIA|ASIA)[0-9A-Z]{16}\b`),
 	regexp.MustCompile(`\bgh[pousr]_[A-Za-z0-9]{20,}`), // GitHub token prefixes (ghp_, gho_, ghu_, ghs_, ghr_)
 }
 
@@ -81,10 +87,10 @@ func ScanForSecrets(dir string) ([]SecretFinding, error) {
 		}
 
 		info, statErr := d.Info()
-		if statErr != nil || info.Size() > maxScannedFileSize {
+		if statErr != nil {
 			return nil
 		}
-		data, readErr := os.ReadFile(path)
+		data, readErr := readScanPrefix(path, info.Size())
 		if readErr != nil {
 			return nil
 		}
@@ -99,6 +105,30 @@ func ScanForSecrets(dir string) ([]SecretFinding, error) {
 
 	sort.Slice(findings, func(i, j int) bool { return findings[i].Path < findings[j].Path })
 	return findings, nil
+}
+
+// readScanPrefix reads up to maxScannedFileSize bytes from the start of
+// path. size is the file's already-known length, used only to avoid
+// allocating a buffer larger than the file actually is; a short read (the
+// file being smaller than size, or than the cap) is not an error - it's
+// what happens for every file smaller than the cap, which is most of them.
+func readScanPrefix(path string, size int64) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	limit := size
+	if limit > maxScannedFileSize {
+		limit = maxScannedFileSize
+	}
+	buf := make([]byte, limit)
+	n, err := io.ReadFull(f, buf)
+	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
+		return nil, err
+	}
+	return buf[:n], nil
 }
 
 func matchesDeniedFilename(name string) (string, bool) {

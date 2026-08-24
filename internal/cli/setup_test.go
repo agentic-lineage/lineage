@@ -258,6 +258,56 @@ func TestAddWithSetupYesAppliesWithoutPrompt(t *testing.T) {
 	}
 }
 
+// TestAddDecliningSetupDoesNotReportReady covers a regression where `add`
+// (no --yes), for a package with setup, answered "yes" to enabling but "no"
+// to creating its setup files - enableRef correctly declined and left the
+// workspace unchanged, but runAdd only checked enableRef's error (nil, by
+// design, since a declined prompt isn't a failure) and unconditionally
+// printed "Ready. Run `lineage run ...`" anyway, telling the user a package
+// was ready to use when it was never actually enabled.
+func TestAddDecliningSetupDoesNotReportReady(t *testing.T) {
+	tmp := t.TempDir()
+	home := filepath.Join(tmp, "home")
+	project := filepath.Join(tmp, "project")
+	srcDir := filepath.Join(tmp, "tracker-pack")
+	initPackageWithSetup(t, srcDir, "tracker-pack")
+	if err := os.MkdirAll(project, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	ref := "tracker-pack@0.1.0"
+	srv := addTestServer(t, ref, srcDir)
+	defer srv.Close()
+
+	t.Setenv(config.HomeEnv, home)
+	t.Setenv("LINEAGE_REGISTRY_URL", srv.URL)
+	oldWd, _ := os.Getwd()
+	if err := os.Chdir(project); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(oldWd)
+
+	var stdout, stderr bytes.Buffer
+	stdin := strings.NewReader("y\nn\n") // yes to enabling, no to setup
+	if err := Execute(nil, []string{"add", ref}, stdin, &stdout, &stderr); err != nil {
+		t.Fatalf("add error = %v stderr=%s", err, stderr.String())
+	}
+
+	out := stdout.String()
+	if !strings.Contains(out, "not enabled - setup was declined") {
+		t.Errorf("stdout = %q, want it to explain setup was declined", out)
+	}
+	if strings.Contains(out, "Ready.") {
+		t.Errorf("stdout = %q, must not claim readiness for a package that was never enabled", out)
+	}
+	if _, err := config.FindProjectConfig(project); err == nil {
+		t.Error("expected no project config after declining setup - the package must not be marked enabled")
+	}
+	if _, err := os.Stat(filepath.Join(project, "tasks.csv")); !os.IsNotExist(err) {
+		t.Errorf("tasks.csv should not have been created after declining setup: err = %v", err)
+	}
+}
+
 // TestAddRespectsBothPromptsFromSingleBufferedStdin covers a regression
 // where `add` (no --yes) answers two prompts in one run - "enable this
 // package?" then, for a package with setup, "create these files?" - and

@@ -7,6 +7,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+
+	"github.com/agentic-lineage/lineage/internal/atomicfile"
 )
 
 // Import extracts an archive produced by Export into a new directory under
@@ -77,11 +79,30 @@ func Import(r io.Reader, destParent, asName string) (string, error) {
 	return name, nil
 }
 
+// maxExtractedFileSize caps how large any single extracted file may be.
+// Lineage packages are skills, workflows, and reference text - nothing
+// legitimate needs anywhere near this much space in one file. A var, not a
+// const, so tests can shrink it instead of needing real multi-megabyte
+// fixtures to exercise the limit.
+var maxExtractedFileSize int64 = 50 << 20 // 50MB
+
+// maxExtractedTotalSize caps how much a whole archive may expand to once
+// every entry is extracted. A tar header's declared size is trusted input
+// the same way its path is: a small, highly-compressible archive can
+// truthfully declare gigabytes of decompressed content, and io.CopyN will
+// faithfully write exactly that many bytes if nothing stops it first -
+// this is the classic decompression-bomb shape. Checked against the
+// declared size before any of it is written, not after.
+var maxExtractedTotalSize int64 = 200 << 20 // 200MB
+
 // extractArchive unpacks a tar.gz stream into destDir. Every entry's path
 // is validated with SafeJoin before it's used — the archive is untrusted,
 // package-controlled input, exactly like a manifest field. Only regular
 // files and directories are accepted; anything else (symlinks, devices,
-// hard links) is rejected outright rather than silently skipped.
+// hard links) is rejected outright rather than silently skipped. Declared
+// entry sizes are checked against maxExtractedFileSize/maxExtractedTotalSize
+// before anything is written, so a maliciously small archive can't expand
+// to fill the receiver's disk.
 func extractArchive(r io.Reader, destDir string) error {
 	gz, err := gzip.NewReader(r)
 	if err != nil {
@@ -90,6 +111,7 @@ func extractArchive(r io.Reader, destDir string) error {
 	defer gz.Close()
 
 	tr := tar.NewReader(gz)
+	var totalSize int64
 	for {
 		hdr, err := tr.Next()
 		if err == io.EOF {
@@ -111,6 +133,17 @@ func extractArchive(r io.Reader, destDir string) error {
 			return fmt.Errorf("archive entry %q has unsupported type; only regular files and directories are allowed", hdr.Name)
 		}
 
+		if hdr.Size < 0 {
+			return fmt.Errorf("archive entry %q declares a negative size", hdr.Name)
+		}
+		if hdr.Size > maxExtractedFileSize {
+			return fmt.Errorf("archive entry %q is %d bytes, over the %d byte per-file limit", hdr.Name, hdr.Size, maxExtractedFileSize)
+		}
+		totalSize += hdr.Size
+		if totalSize > maxExtractedTotalSize {
+			return fmt.Errorf("archive would extract to more than %d bytes total, refusing (possible decompression bomb)", maxExtractedTotalSize)
+		}
+
 		target, err := SafeJoin(destDir, hdr.Name)
 		if err != nil {
 			return fmt.Errorf("archive entry %q: %w", hdr.Name, err)
@@ -127,7 +160,7 @@ func extractArchive(r io.Reader, destDir string) error {
 }
 
 func writeArchiveFile(target string, r io.Reader, size int64) error {
-	out, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+	out, err := atomicfile.Create(target, 0o644)
 	if err != nil {
 		return err
 	}
@@ -136,7 +169,7 @@ func writeArchiveFile(target string, r io.Reader, size int64) error {
 	if _, err := io.CopyN(out, r, size); err != nil {
 		return err
 	}
-	return nil
+	return out.Commit()
 }
 
 // copyTree recursively copies every file under src into dest, preserving
@@ -159,9 +192,6 @@ func copyTree(src, dest string) error {
 		if err != nil {
 			return err
 		}
-		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-			return err
-		}
-		return os.WriteFile(target, data, 0o644)
+		return atomicfile.WriteFile(target, data, 0o644)
 	})
 }

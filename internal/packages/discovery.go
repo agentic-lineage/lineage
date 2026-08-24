@@ -97,8 +97,26 @@ func validateEntrypoint(dir, provider, entrypoint string) error {
 	if entrypoint == "" {
 		return nil
 	}
-	if _, err := SafeJoin(dir, entrypoint); err != nil {
+	abs, err := SafeJoin(dir, entrypoint)
+	if err != nil {
 		return fmt.Errorf("entrypoints.%s: %w", provider, err)
+	}
+	// SafeJoin is a lexical check - it can't see a symlink that resolves
+	// outside the package on disk. contentFiles rejects symlinks the same
+	// way when walking the standard content directories; entrypoints
+	// aren't required to live inside one of those, so they need their own
+	// check here rather than relying on contentFiles to have already
+	// caught it. A missing entrypoint file is left to whatever reads it
+	// later - this only rejects one that exists and is a symlink.
+	info, statErr := os.Lstat(abs)
+	if statErr != nil {
+		if os.IsNotExist(statErr) {
+			return nil
+		}
+		return fmt.Errorf("entrypoints.%s: %w", provider, statErr)
+	}
+	if info.Mode()&fs.ModeSymlink != 0 {
+		return fmt.Errorf("entrypoints.%s: refusing to use symlink %q as an entrypoint", provider, entrypoint)
 	}
 	return nil
 }

@@ -61,6 +61,27 @@ func TestNeedsApprovalTrueWhenPackageSetChanges(t *testing.T) {
 	}
 }
 
+// TestApplyRejectsCollidingSkillDirNames covers a regression where two
+// different (package, skill) pairs whose "-"-joined staged directory names
+// collide (package "foo-bar" skill "x" and package "foo" skill "bar-x"
+// both produce "foo-bar-x") would silently overwrite one another in a map,
+// permanently dropping one package's skill from what actually gets staged.
+// Apply/NeedsApproval must now fail loudly with a clear error instead.
+func TestApplyRejectsCollidingSkillDirNames(t *testing.T) {
+	root := t.TempDir()
+	first := buildTestPackage(t, "foo-bar", "x")
+	second := buildTestPackage(t, "foo", "bar-x")
+	adapter := provider.Provider{Name: "claude", SkillsDir: filepath.Join(".claude", "skills"), ContextFile: "CLAUDE.md"}
+
+	if err := Apply(root, adapter, []packages.Package{first, second}); err == nil {
+		t.Fatal("Apply() error = nil, want an error for colliding skill directory names")
+	}
+
+	if _, err := NeedsApproval(root, adapter, []packages.Package{first, second}); err == nil {
+		t.Fatal("NeedsApproval() error = nil, want an error for colliding skill directory names")
+	}
+}
+
 func TestApplyStagesSkillsAndWritesContextFile(t *testing.T) {
 	root := t.TempDir()
 	pkg := buildTestPackage(t, "review-pack", "review")
@@ -86,6 +107,39 @@ func TestApplyStagesSkillsAndWritesContextFile(t *testing.T) {
 	if !containsAll(content, beginMarker, endMarker, "review-pack@0.1.0") {
 		t.Fatalf("CLAUDE.md missing expected content:\n%s", content)
 	}
+}
+
+// TestApplyCapsStagedFilePermissions covers a regression where copyFile
+// copied a source file's permission bits verbatim. A package could ship a
+// skill file with 0o666/0o777 permissions and have that exact mode
+// replicated into the receiver's project, potentially leaving
+// world-writable files behind on a multi-user machine.
+func TestApplyCapsStagedFilePermissions(t *testing.T) {
+	withUmask0(func() {
+		root := t.TempDir()
+		pkg := buildTestPackage(t, "loose-perms-pack", "loose")
+		skillSrc := filepath.Join(pkg.Path, "skills", "loose", "SKILL.md")
+		if err := os.Chmod(skillSrc, 0o777); err != nil {
+			t.Fatal(err)
+		}
+
+		claude, err := provider.Get("claude")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := Apply(root, claude, []packages.Package{pkg}); err != nil {
+			t.Fatalf("Apply() error = %v", err)
+		}
+
+		staged := filepath.Join(root, ".claude", "skills", "loose-perms-pack-loose", "SKILL.md")
+		info, err := os.Stat(staged)
+		if err != nil {
+			t.Fatalf("expected staged skill at %s: %v", staged, err)
+		}
+		if info.Mode().Perm()&0o022 != 0 {
+			t.Errorf("staged file mode = %v, want no group/other write bit (source was 0o777, umask forced to 0 so the OS can't mask this for us)", info.Mode().Perm())
+		}
+	})
 }
 
 func TestApplyStagesSkillsForCodexAdapter(t *testing.T) {

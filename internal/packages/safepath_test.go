@@ -1,6 +1,7 @@
 package packages
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -81,5 +82,37 @@ func TestDiscoverAllowsInBoundsEntrypoint(t *testing.T) {
 
 	if _, err := Discover(root); err != nil {
 		t.Fatalf("Discover() error = %v, want no error for in-bounds entrypoint", err)
+	}
+}
+
+// TestDiscoverRejectsSymlinkedEntrypoint covers a regression where entrypoint
+// safety was purely lexical (SafeJoin only). SafeJoin correctly rejects a
+// literal "../" in the declared path, but can't see that an in-bounds-looking
+// path is actually a symlink resolving somewhere else entirely - a package
+// root entrypoint isn't required to live inside one of the content
+// directories contentFiles already walks and rejects symlinks in.
+func TestDiscoverRejectsSymlinkedEntrypoint(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "symlink-pack")
+	if err := InitPackage(root, "symlink-pack"); err != nil {
+		t.Fatal(err)
+	}
+
+	outside := filepath.Join(t.TempDir(), "outside.md")
+	mustWrite(t, outside, "# Not part of the package")
+	if err := os.Symlink(outside, filepath.Join(root, "entry.md")); err != nil {
+		t.Fatal(err)
+	}
+
+	manifest, err := LoadManifest(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest.Entrypoints.Claude = "entry.md"
+	if err := SaveManifest(root, manifest); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := Discover(root); err == nil {
+		t.Fatal("Discover() error = nil, want error for a symlinked entrypoint")
 	}
 }

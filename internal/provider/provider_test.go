@@ -68,6 +68,33 @@ func TestCandidateBinariesFindsMultipleAndSkipsShim(t *testing.T) {
 	}
 }
 
+// TestCandidateBinariesSkipsShimContentOutsideShimsDir covers a regression
+// where only a shim's *directory* was excluded (config.ShimsDir(home)),
+// not its content. A shim installed under a different LINEAGE_HOME earlier
+// - or a stray copy of the shim script anywhere else on PATH - would
+// otherwise pass directory-based exclusion and be treated as a real
+// binary; launching it would exec straight back into `lineage run`,
+// resolving the same wrong candidate again with no self-detection: an
+// unbounded fork loop.
+func TestCandidateBinariesSkipsShimContentOutsideShimsDir(t *testing.T) {
+	home := t.TempDir()
+	realDir := t.TempDir()
+	strayDir := t.TempDir() // NOT config.ShimsDir(home) - simulates a shim installed under a different LINEAGE_HOME, or copied elsewhere
+
+	writeExecutable(t, filepath.Join(realDir, "claude"))
+	strayShim := filepath.Join(strayDir, "claude")
+	if err := os.WriteFile(strayShim, []byte("#!/bin/sh\nexec \"/some/other/lineage\" run claude \"$@\"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("PATH", strings.Join([]string{strayDir, realDir}, string(os.PathListSeparator)))
+
+	candidates := CandidateBinaries("claude", home)
+	if len(candidates) != 1 || candidates[0] != filepath.Join(realDir, "claude") {
+		t.Fatalf("CandidateBinaries() = %#v, want only the real binary in %s (the shim-content stray copy in %s excluded)", candidates, realDir, strayDir)
+	}
+}
+
 func TestCandidateBinariesEmptyWhenNoneFound(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("PATH", t.TempDir())

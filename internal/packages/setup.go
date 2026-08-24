@@ -106,7 +106,7 @@ func ApplySetup(projectRoot string, plan SetupPlan) error {
 		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
 			return fmt.Errorf("create directory for %q: %w", f.Path, err)
 		}
-		if err := os.WriteFile(abs, []byte(f.Template), 0o644); err != nil {
+		if err := createIfMissing(abs, f.Template); err != nil {
 			return fmt.Errorf("create %q: %w", f.Path, err)
 		}
 	}
@@ -118,9 +118,36 @@ func ApplySetup(projectRoot string, plan SetupPlan) error {
 		if err != nil {
 			return fmt.Errorf("setup directory %q: %w", d.Path, err)
 		}
+		// MkdirAll is naturally safe against the same staleness ApplySetup's
+		// file case has to guard against explicitly: it succeeds without
+		// modifying anything if the directory now already exists (created
+		// in the window between PlanSetup and ApplySetup), rather than
+		// overwriting existing content the way a plain file write would.
 		if err := os.MkdirAll(abs, 0o755); err != nil {
 			return fmt.Errorf("create directory %q: %w", d.Path, err)
 		}
 	}
 	return nil
+}
+
+// createIfMissing writes template to abs only if it doesn't already exist,
+// using O_EXCL so the check-and-create is atomic. PlanSetup's Exists
+// snapshot can be stale by the time ApplySetup runs - the two are
+// deliberately split around a confirmation prompt (#72) - so re-trusting
+// that snapshot here could silently overwrite a file that was created in
+// that window. A file that already exists by the time we get here is
+// treated the same as one PlanSetup already knew about: left untouched,
+// consistent with ApplySetup's "anything already present is left
+// completely untouched" contract, not an error.
+func createIfMissing(abs, template string) error {
+	f, err := os.OpenFile(abs, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		if os.IsExist(err) {
+			return nil
+		}
+		return err
+	}
+	defer f.Close()
+	_, err = f.WriteString(template)
+	return err
 }

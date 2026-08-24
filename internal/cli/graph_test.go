@@ -47,6 +47,68 @@ func TestEnableRecordsGraphEntry(t *testing.T) {
 	}
 }
 
+// TestEnableFailingGraphAppendDoesNotPersistConfig covers a regression
+// where enableRef saved .lineage/config.yaml (marking the package enabled)
+// before computing the digest, taking the snapshot, and appending to the
+// graph - any of which can still fail. A corrupt .lineage/graph.json (the
+// kind a prior crash mid-write could leave behind) made graph.Append fail
+// after config had already been saved: `enable` reported a non-zero exit
+// while the package was already durably marked enabled, with every
+// subsequent enable in the project failing the same opaque way.
+func TestEnableFailingGraphAppendDoesNotPersistConfig(t *testing.T) {
+	tmp := t.TempDir()
+	home := filepath.Join(tmp, "home")
+	project := filepath.Join(tmp, "project")
+	pkgDir := filepath.Join(project, "agent-pack")
+
+	if err := os.MkdirAll(filepath.Join(pkgDir, "skills", "hello"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pkgDir, "lineage.yaml"), []byte("name: agent-pack\nversion: 0.1.0\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pkgDir, "skills", "hello", "SKILL.md"), []byte("# Hello"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// A corrupt graph.json - the kind a crash mid-write could leave behind
+	// - makes graph.Append fail at the Load step, before it ever writes
+	// anything.
+	if err := os.MkdirAll(filepath.Join(project, ".lineage"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(project, ".lineage", "graph.json"), []byte("not json"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	oldHome := os.Getenv(config.HomeEnv)
+	t.Setenv(config.HomeEnv, home)
+	t.Cleanup(func() { os.Setenv(config.HomeEnv, oldHome) })
+	oldWd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chdir(oldWd) })
+	if err := os.Chdir(project); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if err := Execute(nil, []string{"enable", "./agent-pack"}, nil, &stdout, &stderr); err == nil {
+		t.Fatal("enable error = nil, want error from the corrupt graph file")
+	}
+
+	found, err := config.FindProjectConfig(project)
+	if err != nil {
+		// No config was ever written - the ideal outcome for a first
+		// enable that failed before completing.
+		return
+	}
+	if contains(found.Config.EnabledPackages, "./agent-pack") {
+		t.Errorf("enabled packages = %v, want agent-pack NOT enabled after a failed enable", found.Config.EnabledPackages)
+	}
+}
+
 func TestEnableTwiceAppendsSecondRecord(t *testing.T) {
 	project, _ := setUpEnabledProject(t)
 

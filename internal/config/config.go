@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/agentic-lineage/lineage/internal/atomicfile"
 	"gopkg.in/yaml.v3"
 )
 
@@ -87,18 +88,18 @@ func LoadProjectConfig(path string) (ProjectConfig, error) {
 	if cfg.Providers == nil {
 		cfg.Providers = map[string]Provider{}
 	}
+	if cfg.EnabledPackages == nil {
+		cfg.EnabledPackages = []string{}
+	}
 	return cfg, nil
 }
 
 func SaveProjectConfig(path string, cfg ProjectConfig) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return fmt.Errorf("create config directory: %w", err)
-	}
 	data, err := yaml.Marshal(cfg)
 	if err != nil {
 		return fmt.Errorf("encode project config: %w", err)
 	}
-	if err := os.WriteFile(path, data, 0o644); err != nil {
+	if err := atomicfile.WriteFile(path, data, 0o644); err != nil {
 		return fmt.Errorf("write project config: %w", err)
 	}
 	return nil

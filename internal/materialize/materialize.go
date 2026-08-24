@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/agentic-lineage/lineage/internal/atomicfile"
 	"github.com/agentic-lineage/lineage/internal/packages"
 	"github.com/agentic-lineage/lineage/internal/provider"
 )
@@ -92,7 +93,10 @@ func apply(projectRoot string, adapter provider.Provider, pkgs []packages.Packag
 		return err
 	}
 
-	desired := desiredSkillDirs(adapter, pkgs)
+	desired, err := desiredSkillDirs(adapter, pkgs)
+	if err != nil {
+		return err
+	}
 
 	for _, rel := range prev.SkillDirs {
 		if _, ok := desired[rel]; ok {
@@ -135,7 +139,10 @@ func NeedsApproval(projectRoot string, adapter provider.Provider, pkgs []package
 		return false, err
 	}
 
-	desired := desiredSkillDirs(adapter, pkgs)
+	desired, err := desiredSkillDirs(adapter, pkgs)
+	if err != nil {
+		return false, err
+	}
 	desiredDirs := make([]string, 0, len(desired))
 	for rel := range desired {
 		desiredDirs = append(desiredDirs, rel)
@@ -156,15 +163,28 @@ func NeedsApprovalForWorkflow(projectRoot string, adapter provider.Provider, pkg
 	return NeedsApproval(projectRoot, adapter, []packages.Package{scoped})
 }
 
-func desiredSkillDirs(adapter provider.Provider, pkgs []packages.Package) map[string]string {
+// desiredSkillDirs computes each enabled skill's staged directory name by
+// joining package name and skill name with "-". Neither is restricted
+// enough to make that join unambiguous on its own (manifest names can
+// contain "-", and hyphenated skill names like "commit-messages" are
+// normal): package "foo-bar" skill "x" and package "foo" skill "bar-x"
+// both produce "foo-bar-x". Rather than change the naming scheme (which
+// would make every staged directory harder to read, for a collision that
+// almost never happens), a genuine collision is detected and reported as
+// an error instead of one entry silently overwriting the other in the map.
+func desiredSkillDirs(adapter provider.Provider, pkgs []packages.Package) (map[string]string, error) {
 	desired := map[string]string{} // relative skill dir -> absolute source dir
 	for _, pkg := range pkgs {
 		for _, skill := range pkg.Skills {
 			rel := filepath.Join(adapter.SkillsDir, pkg.Manifest.Name+"-"+skill)
-			desired[rel] = filepath.Join(pkg.Path, "skills", skill)
+			src := filepath.Join(pkg.Path, "skills", skill)
+			if existing, ok := desired[rel]; ok && existing != src {
+				return nil, fmt.Errorf("skill directory name %q is claimed by both %s and %s - rename one of these skills or packages to disambiguate", rel, existing, src)
+			}
+			desired[rel] = src
 		}
 	}
-	return desired
+	return desired, nil
 }
 
 func equalStrings(a, b []string) bool {
@@ -203,7 +223,7 @@ func saveState(projectRoot, providerName string, s state) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0o644)
+	return atomicfile.WriteFile(path, data, 0o644)
 }
 
 func writeSummary(path string, pkgs []packages.Package, wf *WorkflowSequence) error {
@@ -219,10 +239,7 @@ func writeSummary(path string, pkgs []packages.Package, wf *WorkflowSequence) er
 		next = replaceBlock(string(existing), block)
 	}
 
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	return os.WriteFile(path, []byte(next), 0o644)
+	return atomicfile.WriteFile(path, []byte(next), 0o644)
 }
 
 func renderSummaryBlock(pkgs []packages.Package, wf *WorkflowSequence) string {
@@ -312,15 +329,27 @@ func copyFile(src, dest string) error {
 		return err
 	}
 
-	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
-		return err
-	}
-	out, err := os.OpenFile(dest, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, info.Mode().Perm())
+	// Cap at 0o755 rather than copying the source file's mode verbatim: a
+	// package could otherwise ship a skill file with 0o666/0o777
+	// permissions and have that exact mode replicated into the receiver's
+	// project, potentially leaving world-writable files behind on a
+	// multi-user machine. Masking with 0o755 keeps any owner/group/other
+	// read or execute bits the source had, but can never grant group or
+	// other write access regardless of what the source declared. Chmod'd
+	// explicitly after creation rather than only passed to OpenFile,
+	// since OpenFile's mode argument is itself subject to the process's
+	// umask - relying on that alone would make the cap only as strong as
+	// whatever umask happens to be in effect on the receiver's machine,
+	// rather than a guarantee this codebase actually makes.
+	perm := info.Mode().Perm() & 0o755
+	out, err := atomicfile.Create(dest, perm)
 	if err != nil {
 		return err
 	}
 	defer out.Close()
 
-	_, err = io.Copy(out, in)
-	return err
+	if _, err := io.Copy(out, in); err != nil {
+		return err
+	}
+	return out.Commit()
 }

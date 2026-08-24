@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"runtime"
 
+	"github.com/agentic-lineage/lineage/internal/atomicfile"
 	"github.com/agentic-lineage/lineage/internal/provider"
 )
 
@@ -42,7 +43,7 @@ func FileName(providerName, goos string) string {
 func writeShim(binDir, lineageBinary, providerName, goos string) error {
 	path := filepath.Join(binDir, FileName(providerName, goos))
 	content, perm := shimContent(lineageBinary, providerName, goos)
-	if err := os.WriteFile(path, []byte(content), perm); err != nil {
+	if err := atomicfile.WriteFile(path, []byte(content), perm); err != nil {
 		return fmt.Errorf("write %s shim: %w", providerName, err)
 	}
 	return nil

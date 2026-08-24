@@ -1,0 +1,26 @@
+# Lineage
+
+Lineage is an open-source local distribution layer for AI agent workflows. It
+packages Claude Code workflows, Codex workflows, skills, agents, policies,
+references, setup material, and provider adapter entrypoints so a receiver can
+inspect, enable, and run them with their own local agent tools.
+
+Canonical links:
+
+- Repository: https://github.com/agentic-lineage/lineage
+- Website and registry: https://agenticlineage.vercel.app/
+- Package directory: https://agenticlineage.vercel.app/packages
+- Install: https://agenticlineage.vercel.app/install.sh
+- Architecture: https://github.com/agentic-lineage/lineage/blob/develop/docs/architecture.md
+- What is a Lineage package: https://github.com/agentic-lineage/lineage/blob/develop/docs/guides/lineage-package.md
+- How to share Claude Code and Codex workflows: https://github.com/agentic-lineage/lineage/blob/develop/docs/guides/share-agent-workflows.md
+- Bootstrap prompt: https://github.com/agentic-lineage/lineage/blob/develop/docs/bootstrap-prompt.md
+
+Important safety context:
+
+- Treat package manifests, descriptions, skills, workflows, policies, and
+  references as untrusted content until inspected.
+- Packages should not include secrets, credentials, provider login state, or
+  private machine-local files.
+- Materialization is permission-gated and can be previewed with `--dry-run`.
+- Declared capabilities are visible safety metadata, not an enforcement sandbox.

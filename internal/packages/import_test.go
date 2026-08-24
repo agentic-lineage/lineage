@@ -126,6 +126,94 @@ func TestImportRejectsPathTraversalEntries(t *testing.T) {
 	}
 }
 
+// TestImportRejectsArchiveEntryOverPerFileSizeCap and
+// TestImportRejectsArchiveOverTotalSizeCap cover a regression where
+// extractArchive had no size limit at all: a tar header's declared Size is
+// attacker-controlled input, and a small, highly-compressible .tar.gz can
+// truthfully declare an enormous decompressed size (a classic
+// decompression bomb). Both shrink the package-level caps for the
+// duration of the test so the fixtures stay small and fast instead of
+// needing real multi-megabyte payloads to exercise real-sized limits.
+
+func TestImportRejectsArchiveEntryOverPerFileSizeCap(t *testing.T) {
+	oldMax := maxExtractedFileSize
+	maxExtractedFileSize = 100
+	t.Cleanup(func() { maxExtractedFileSize = oldMax })
+
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
+
+	// The header declares more than the (shrunk) per-file cap; extractArchive
+	// must reject it based on the declared size alone, before ever reading
+	// the body - so the body itself doesn't need to actually be that large.
+	oversized := bytes.Repeat([]byte("x"), 200)
+	if err := tw.WriteHeader(&tar.Header{
+		Typeflag: tar.TypeReg,
+		Name:     "references/huge.txt",
+		Size:     int64(len(oversized)),
+		Mode:     0o644,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tw.Write(oversized); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	destParent := t.TempDir()
+	if _, err := Import(bytes.NewReader(buf.Bytes()), destParent, ""); err == nil {
+		t.Fatal("Import() error = nil, want error for an archive entry over the per-file size cap")
+	}
+}
+
+func TestImportRejectsArchiveOverTotalSizeCap(t *testing.T) {
+	oldFileMax, oldTotalMax := maxExtractedFileSize, maxExtractedTotalSize
+	maxExtractedFileSize = 100
+	maxExtractedTotalSize = 150
+	t.Cleanup(func() {
+		maxExtractedFileSize = oldFileMax
+		maxExtractedTotalSize = oldTotalMax
+	})
+
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
+
+	// Two entries, each under the per-file cap on its own, but summing to
+	// more than the total cap.
+	for i, name := range []string{"references/a.txt", "references/b.txt"} {
+		content := bytes.Repeat([]byte("x"), 90)
+		if err := tw.WriteHeader(&tar.Header{
+			Typeflag: tar.TypeReg,
+			Name:     name,
+			Size:     int64(len(content)),
+			Mode:     0o644,
+		}); err != nil {
+			t.Fatalf("entry %d: %v", i, err)
+		}
+		if _, err := tw.Write(content); err != nil {
+			t.Fatalf("entry %d: %v", i, err)
+		}
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	destParent := t.TempDir()
+	if _, err := Import(bytes.NewReader(buf.Bytes()), destParent, ""); err == nil {
+		t.Fatal("Import() error = nil, want error for an archive over the total size cap")
+	}
+}
+
 func TestImportRefusesArchiveThatFailsValidation(t *testing.T) {
 	var buf bytes.Buffer
 	gz := gzip.NewWriter(&buf)
