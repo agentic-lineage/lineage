@@ -558,6 +558,28 @@ func runEnable(args []string, home string, stdin *bufio.Reader, stdout, stderr i
 // left the workspace unchanged), but it is also not success - callers like
 // runAdd need to tell the two apart instead of treating "no error" as
 // "enabled" and reporting readiness for a package that was never turned on.
+// projectRelativeRef re-expresses a "./" or "../" style ref - typed
+// relative to cwd - against projectRoot, which is where the config lives
+// and what `lineage run` later resolves enabled_packages entries against.
+// Anything else, including a ref typed at the project root itself, is
+// already stored verbatim and comes back unchanged. Both enable (which
+// writes the entry) and disable (which has to match it) go through this,
+// so the two agree on what string a given ref means.
+func projectRelativeRef(ref, projectRoot, resolveRoot, resolvedPath string) string {
+	if !strings.HasPrefix(ref, ".") || resolveRoot == projectRoot {
+		return ref
+	}
+	rel, err := filepath.Rel(projectRoot, resolvedPath)
+	if err != nil {
+		return ref
+	}
+	rel = filepath.ToSlash(rel)
+	if !strings.HasPrefix(rel, ".") {
+		rel = "./" + rel
+	}
+	return rel
+}
+
 func enableRef(ref, home string, autoApprove bool, stdin *bufio.Reader, stdout, stderr io.Writer) (bool, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -605,16 +627,7 @@ func enableRef(ref, home string, autoApprove bool, stdin *bufio.Reader, stdout, 
 	// that same root. Store relative refs re-expressed against projectRoot
 	// so they still resolve correctly, instead of the literal string the
 	// user typed relative to cwd.
-	storedRef := ref
-	if strings.HasPrefix(ref, ".") && resolveRoot != projectRoot {
-		if rel, relErr := filepath.Rel(projectRoot, resolvedPath); relErr == nil {
-			rel = filepath.ToSlash(rel)
-			if !strings.HasPrefix(rel, ".") {
-				rel = "./" + rel
-			}
-			storedRef = rel
-		}
-	}
+	storedRef := projectRelativeRef(ref, projectRoot, resolveRoot, resolvedPath)
 
 	newEnabled := cfg.EnabledPackages
 	if !contains(newEnabled, storedRef) {
@@ -923,7 +936,18 @@ func runDisable(args []string, home string, stdin *bufio.Reader, stdout, stderr 
 		return err
 	}
 
-	if !contains(found.Config.EnabledPackages, ref) {
+	// Match the entry the way enable wrote it: a relative ref typed from a
+	// subdirectory was stored re-expressed against the project root, so
+	// comparing the literal argument would miss it. If the ref no longer
+	// resolves (the package directory is gone, which is a common reason to
+	// be disabling it), fall back to the literal string, which is still an
+	// exact match for anything enable stored verbatim.
+	storedRef := ref
+	if resolvedPath, resolveErr := packages.ResolveReference(home, found.Config.Workspace, cwd, ref); resolveErr == nil {
+		storedRef = projectRelativeRef(ref, found.Root, cwd, resolvedPath)
+	}
+
+	if !contains(found.Config.EnabledPackages, storedRef) {
 		err := fmt.Errorf("package %q is not enabled in %s", ref, found.Path)
 		fmt.Fprintln(stderr, err)
 		return err
@@ -931,7 +955,7 @@ func runDisable(args []string, home string, stdin *bufio.Reader, stdout, stderr 
 
 	newEnabled := make([]string, 0, len(found.Config.EnabledPackages)-1)
 	for _, r := range found.Config.EnabledPackages {
-		if r != ref {
+		if r != storedRef {
 			newEnabled = append(newEnabled, r)
 		}
 	}

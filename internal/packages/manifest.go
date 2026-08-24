@@ -163,9 +163,20 @@ func LoadManifest(dir string) (Manifest, error) {
 	if err := validateIdentifier("version", path, manifest.Version); err != nil {
 		return Manifest{}, err
 	}
-	// schema 0 means the manifest predates the schema field; treat that as
-	// schema 1, the only schema that ever existed before it was added.
-	if manifest.Schema == 0 {
+	// An absent schema field and an explicit `schema: 0` both leave
+	// manifest.Schema at 0, so the int alone cannot tell them apart. Decode
+	// the field again as a pointer to distinguish them: an absent field
+	// means the manifest predates the schema field and is treated as schema
+	// 1, the only schema that ever existed before it was added, while an
+	// explicit 0 is a value that never existed and is rejected rather than
+	// silently coerced.
+	var probe struct {
+		Schema *int `yaml:"schema"`
+	}
+	if err := yaml.Unmarshal(data, &probe); err != nil {
+		return Manifest{}, fmt.Errorf("parse manifest %s: %w", path, err)
+	}
+	if probe.Schema == nil {
 		manifest.Schema = CurrentSchema
 	}
 	if manifest.Schema != CurrentSchema {
