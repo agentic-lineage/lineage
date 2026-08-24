@@ -182,3 +182,10 @@ All notable changes to Lineage will be documented here.
   also takes a durable snapshot of exactly what was enabled, and links
   it to the graph entry above via `snapshot_id`. Identical file content
   is stored once regardless of how many packages/versions reference it.
+- The `.lineage` directory is now designed as a whole (#59, ADR 0015):
+  `.lineage/config.yaml` and `.lineage/materialized-<provider>.json` carry
+  a `schema` field, defaulted for existing files and rejected if
+  unsupported, matching `lineage.yaml`'s existing convention. `lineage
+  enable` now gitignores a project's `.lineage/` the first time it
+  creates one, since it can carry machine-local provider paths and
+  regenerable cache that should never be committed.
