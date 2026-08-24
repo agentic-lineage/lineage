@@ -63,17 +63,39 @@ func Export(dir string, w io.Writer) error {
 	return nil
 }
 
+// ContentMode collapses a file's permissions to one of exactly two values:
+// 0o755 when any execute bit is set, 0o644 otherwise. Export, import, and
+// the staging copy all route through it so a helper script keeps its
+// executable bit across a round trip.
+//
+// It collapses rather than copies the source mode for two reasons. Package
+// content is untrusted, so an archive must never be able to ask for setuid,
+// setgid, sticky, or group/world-writable bits on a receiver's disk — only
+// the exec bit survives, and only as the fixed 0o755. And an archive has to
+// stay byte-identical for identical content (see deterministicTime), which
+// copying a contributor's umask-dependent mode would break.
+func ContentMode(m os.FileMode) os.FileMode {
+	if m.Perm()&0o111 != 0 {
+		return 0o755
+	}
+	return 0o644
+}
+
 func addTarFile(tw *tar.Writer, absPath, name string) error {
 	data, err := os.ReadFile(absPath)
 	if err != nil {
 		return fmt.Errorf("read %s: %w", name, err)
+	}
+	info, err := os.Stat(absPath)
+	if err != nil {
+		return fmt.Errorf("stat %s: %w", name, err)
 	}
 
 	hdr := &tar.Header{
 		Typeflag: tar.TypeReg,
 		Name:     name,
 		Size:     int64(len(data)),
-		Mode:     0o644,
+		Mode:     int64(ContentMode(info.Mode())),
 		ModTime:  deterministicTime,
 	}
 	if err := tw.WriteHeader(hdr); err != nil {

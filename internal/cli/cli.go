@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/agentic-lineage/lineage/internal/atomicfile"
@@ -172,7 +173,14 @@ func isHelpFlag(s string) bool {
 	return s == "-h" || s == "--help"
 }
 
+// is there a help flag anywhere in this command's arguments?
+func hasHelpFlag(args []string) bool {
+	return slices.ContainsFunc(args, isHelpFlag)
+}
+
 func runPackage(args []string, home string, stdout, stderr io.Writer) error {
+	//   Can't call hasHelpFlag here, otherwise general lineage package help
+	// would be printed
 	if len(args) > 0 && isHelpFlag(args[0]) {
 		fmt.Fprintln(stdout, packageUsage)
 		return nil
@@ -185,7 +193,7 @@ func runPackage(args []string, home string, stdout, stderr io.Writer) error {
 
 	switch args[0] {
 	case "init":
-		if isHelpFlag(args[1]) {
+		if hasHelpFlag(args[1:]) {
 			fmt.Fprintln(stdout, "usage: lineage package init <name>\n\nScaffold a new package: lineage.yaml plus the standard skills/workflows/agents/policies/references/adapters folders.")
 			return nil
 		}
@@ -203,7 +211,7 @@ func runPackage(args []string, home string, stdout, stderr io.Writer) error {
 		fmt.Fprintf(stdout, "initialized package %s\n", dir)
 		return nil
 	case "validate":
-		if isHelpFlag(args[1]) {
+		if hasHelpFlag(args[1:]) {
 			fmt.Fprintln(stdout, "usage: lineage package validate <path> [--yaml]\n\nCheck manifest schema, export authority, entrypoint path safety, and scan for secrets - without enabling or writing anything. --yaml prints a stable, provider-independent structured report instead of the human-readable summary.")
 			return nil
 		}
@@ -243,7 +251,7 @@ func runPackage(args []string, home string, stdout, stderr io.Writer) error {
 }
 
 func runPackagePublish(args []string, home string, stdout, stderr io.Writer) error {
-	if len(args) > 0 && isHelpFlag(args[0]) {
+	if hasHelpFlag(args) {
 		fmt.Fprintln(stdout, "usage: lineage package publish <path>\n\nValidate and publish a package to the Lineage registry, identified by the GitHub login from `lineage login` (or LINEAGE_PUBLISH_TOKEN). The first publish of a name claims it; later publishes need the same identity.")
 		return nil
 	}
@@ -280,7 +288,7 @@ func runPackagePublish(args []string, home string, stdout, stderr io.Writer) err
 }
 
 func runPackagePull(args []string, home string, stdout, stderr io.Writer) error {
-	if len(args) > 0 && isHelpFlag(args[0]) {
+	if hasHelpFlag(args) {
 		fmt.Fprintln(stdout, "usage: lineage package pull <package-ref> [--as name]\n\nFetch a published package (ref is \"name\" for the latest version, or an exact \"name@version\") and verify its content digest. An unauthenticated read - no login needed.")
 		return nil
 	}
@@ -323,7 +331,7 @@ func runPackagePull(args []string, home string, stdout, stderr io.Writer) error 
 }
 
 func runPackageImport(args []string, home string, stdout, stderr io.Writer) error {
-	if len(args) > 0 && isHelpFlag(args[0]) {
+	if hasHelpFlag(args) {
 		fmt.Fprintln(stdout, "usage: lineage package import <file.tgz> [--as name]\n\nExtract an exported archive into the user packages directory, re-validating it as untrusted input. Never overwrites an existing package; use --as to import under a different name.")
 		return nil
 	}
@@ -370,7 +378,7 @@ func runPackageImport(args []string, home string, stdout, stderr io.Writer) erro
 }
 
 func runPackageExport(args []string, stdout, stderr io.Writer) error {
-	if len(args) > 0 && isHelpFlag(args[0]) {
+	if hasHelpFlag(args) {
 		fmt.Fprintln(stdout, "usage: lineage package export <path> [-o file.tgz]\n\nWrite a deterministic .tgz archive of the package after running the same checks as validate. Refuses to export a package that fails validation.")
 		return nil
 	}
@@ -513,7 +521,7 @@ func describeSuffix(description string) string {
 }
 
 func runEnable(args []string, home string, stdin *bufio.Reader, stdout, stderr io.Writer) error {
-	if len(args) > 0 && isHelpFlag(args[0]) {
+	if hasHelpFlag(args) {
 		fmt.Fprintln(stdout, "usage: lineage enable <package-path-or-id> [--yes]\n\nEnable a package in the current project. If the package declares setup - tracker files or directories its workflow expects - shows the plan and asks permission before creating anything; --yes skips that prompt.")
 		return nil
 	}
@@ -550,6 +558,28 @@ func runEnable(args []string, home string, stdin *bufio.Reader, stdout, stderr i
 // left the workspace unchanged), but it is also not success - callers like
 // runAdd need to tell the two apart instead of treating "no error" as
 // "enabled" and reporting readiness for a package that was never turned on.
+// projectRelativeRef re-expresses a "./" or "../" style ref - typed
+// relative to cwd - against projectRoot, which is where the config lives
+// and what `lineage run` later resolves enabled_packages entries against.
+// Anything else, including a ref typed at the project root itself, is
+// already stored verbatim and comes back unchanged. Both enable (which
+// writes the entry) and disable (which has to match it) go through this,
+// so the two agree on what string a given ref means.
+func projectRelativeRef(ref, projectRoot, resolveRoot, resolvedPath string) string {
+	if !strings.HasPrefix(ref, ".") || resolveRoot == projectRoot {
+		return ref
+	}
+	rel, err := filepath.Rel(projectRoot, resolvedPath)
+	if err != nil {
+		return ref
+	}
+	rel = filepath.ToSlash(rel)
+	if !strings.HasPrefix(rel, ".") {
+		rel = "./" + rel
+	}
+	return rel
+}
+
 func enableRef(ref, home string, autoApprove bool, stdin *bufio.Reader, stdout, stderr io.Writer) (bool, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -597,16 +627,7 @@ func enableRef(ref, home string, autoApprove bool, stdin *bufio.Reader, stdout, 
 	// that same root. Store relative refs re-expressed against projectRoot
 	// so they still resolve correctly, instead of the literal string the
 	// user typed relative to cwd.
-	storedRef := ref
-	if strings.HasPrefix(ref, ".") && resolveRoot != projectRoot {
-		if rel, relErr := filepath.Rel(projectRoot, resolvedPath); relErr == nil {
-			rel = filepath.ToSlash(rel)
-			if !strings.HasPrefix(rel, ".") {
-				rel = "./" + rel
-			}
-			storedRef = rel
-		}
-	}
+	storedRef := projectRelativeRef(ref, projectRoot, resolveRoot, resolvedPath)
 
 	newEnabled := cfg.EnabledPackages
 	if !contains(newEnabled, storedRef) {
@@ -774,7 +795,7 @@ func importAddSource(ref, destParent string) (name, action string, err error) {
 }
 
 func runAdd(args []string, home string, stdin *bufio.Reader, stdout, stderr io.Writer) error {
-	if len(args) > 0 && isHelpFlag(args[0]) {
+	if hasHelpFlag(args) {
 		fmt.Fprintln(stdout, "usage: lineage add <package-ref> [--yes]\n\nFetch a published package, show what it contains, ask permission, then enable it in the current project - the one-command receiver path. <package-ref> is a registry ref (name or name@version), or the path to a local .tgz archive from `lineage package export`.")
 		return nil
 	}
@@ -915,7 +936,18 @@ func runDisable(args []string, home string, stdin *bufio.Reader, stdout, stderr 
 		return err
 	}
 
-	if !contains(found.Config.EnabledPackages, ref) {
+	// Match the entry the way enable wrote it: a relative ref typed from a
+	// subdirectory was stored re-expressed against the project root, so
+	// comparing the literal argument would miss it. If the ref no longer
+	// resolves (the package directory is gone, which is a common reason to
+	// be disabling it), fall back to the literal string, which is still an
+	// exact match for anything enable stored verbatim.
+	storedRef := ref
+	if resolvedPath, resolveErr := packages.ResolveReference(home, found.Config.Workspace, cwd, ref); resolveErr == nil {
+		storedRef = projectRelativeRef(ref, found.Root, cwd, resolvedPath)
+	}
+
+	if !contains(found.Config.EnabledPackages, storedRef) {
 		err := fmt.Errorf("package %q is not enabled in %s", ref, found.Path)
 		fmt.Fprintln(stderr, err)
 		return err
@@ -923,7 +955,7 @@ func runDisable(args []string, home string, stdin *bufio.Reader, stdout, stderr 
 
 	newEnabled := make([]string, 0, len(found.Config.EnabledPackages)-1)
 	for _, r := range found.Config.EnabledPackages {
-		if r != ref {
+		if r != storedRef {
 			newEnabled = append(newEnabled, r)
 		}
 	}
@@ -997,7 +1029,7 @@ func runDisable(args []string, home string, stdin *bufio.Reader, stdout, stderr 
 }
 
 func runInspect(args []string, home string, stdout, stderr io.Writer) error {
-	if len(args) > 0 && isHelpFlag(args[0]) {
+	if hasHelpFlag(args) {
 		fmt.Fprintln(stdout, "usage: lineage inspect <package-path-or-id> [--yaml]\n\nShow a package's contents. --yaml prints a stable, provider-independent structured report instead of the human-readable summary.")
 		return nil
 	}

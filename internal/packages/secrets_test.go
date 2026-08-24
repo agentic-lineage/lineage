@@ -62,6 +62,42 @@ func TestScanForSecretsFlagsAWSKeyID(t *testing.T) {
 	}
 }
 
+func TestScanForSecretsFlagsAWSSessionKeyID(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "sts-pack")
+	if err := InitPackage(root, "sts-pack"); err != nil {
+		t.Fatal(err)
+	}
+	// Split for the same reason as the AKIA fixture above.
+	fakeSessionKeyID := "ASIA" + "ABCDEFGHIJKLMNOP"
+	mustWrite(t, filepath.Join(root, "references", "session.txt"), "aws_access_key_id = "+fakeSessionKeyID+"\n")
+
+	findings, err := ScanForSecrets(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasFindingForPath(findings, filepath.ToSlash(filepath.Join("references", "session.txt"))) {
+		t.Fatalf("findings = %#v, want a finding for the temporary STS key ID", findings)
+	}
+}
+
+func TestScanForSecretsFlagsFineGrainedGitHubToken(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "gh-pack")
+	if err := InitPackage(root, "gh-pack"); err != nil {
+		t.Fatal(err)
+	}
+	// Split for the same reason as the AWS key ID fixture above.
+	fakeToken := "github" + "_pat_11AAAAAAA0aaaaaaaaaaaaa_" + strings.Repeat("b", 59)
+	mustWrite(t, filepath.Join(root, "references", "token.txt"), "GITHUB_TOKEN="+fakeToken+"\n")
+
+	findings, err := ScanForSecrets(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasFindingForPath(findings, filepath.ToSlash(filepath.Join("references", "token.txt"))) {
+		t.Fatalf("findings = %#v, want a finding for the fine-grained GitHub token", findings)
+	}
+}
+
 func TestScanForSecretsCatchesContentInFilesOverSizeCap(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "big-pack")
 	if err := InitPackage(root, "big-pack"); err != nil {
