@@ -137,11 +137,9 @@ const GitignoreEntry = DirName + "/"
 
 // EnsureGitignored appends GitignoreEntry to projectRoot's .gitignore,
 // creating the file if it doesn't exist yet. It is a no-op if some line
-// already matches once surrounding whitespace is trimmed (whether that's
-// GitignoreEntry itself, a bare ".lineage", or a broader ignore a receiver
-// already wrote by hand), so it's safe to call every time a project's
-// .lineage/ is first created without duplicating entries or fighting a
-// receiver who deliberately removed it.
+// already matches once surrounding whitespace is trimmed: either
+// GitignoreEntry itself or a bare ".lineage". It is safe to call on every
+// successful enable without duplicating entries.
 func EnsureGitignored(projectRoot string) error {
 	path := filepath.Join(projectRoot, ".gitignore")
 	data, err := os.ReadFile(path)

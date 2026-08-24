@@ -155,7 +155,7 @@ func TestEnableTwiceDoesNotDuplicateGitignoreEntry(t *testing.T) {
 	}
 }
 
-func TestEnableDoesNotOverwriteReceiversRemovedGitignoreEntry(t *testing.T) {
+func TestEnableRestoresMissingGitignoreEntry(t *testing.T) {
 	project, _ := setUpEnabledProject(t)
 
 	gitignorePath := filepath.Join(project, ".gitignore")
@@ -172,8 +172,8 @@ func TestEnableDoesNotOverwriteReceiversRemovedGitignoreEntry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(data) != "node_modules/\n" {
-		t.Fatalf(".gitignore = %q, want unchanged after a receiver removed the .lineage/ entry post-first-enable", data)
+	if string(data) != "node_modules/\n.lineage/\n" {
+		t.Fatalf(".gitignore = %q, want .lineage/ restored after it was removed", data)
 	}
 }
 

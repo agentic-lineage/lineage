@@ -21,7 +21,7 @@ No network access is required: Lineage's one dependency (`gopkg.in/yaml.v3`) is 
 
 ## The `.lineage` Directory
 
-A project's `<project>/.lineage/` (config, materialized provider state, the local lineage graph) is machine-local and regenerable-or-historical, never portable package content — it must never be committed to a receiver's repo. `lineage enable` gitignores it automatically the first time it creates one for a project. If you add a new file under project- or user-level `.lineage/`, enumerate it and classify it (regenerable vs. authoritative) in [docs/decisions/0015](docs/decisions/0015-the-lineage-directory-is-a-versioned-enumerated-container.md) rather than leaving it undocumented, and give it a `schema` field if its shape could plausibly need to change incompatibly later (see ADR 0005's precedent).
+A project's `<project>/.lineage/` (config, materialized provider state, the local lineage graph) is machine-local and regenerable-or-historical, never portable package content — it must never be committed to a receiver's repo. `lineage enable` gitignores it automatically and reinforces the idempotent `.lineage/` entry on later enables. If you add a new file under project- or user-level `.lineage/`, enumerate it and classify it (regenerable vs. authoritative) in [docs/decisions/0015](docs/decisions/0015-the-lineage-directory-is-a-versioned-enumerated-container.md) rather than leaving it undocumented, and give it a `schema` field if its shape could plausibly need to change incompatibly later (see ADR 0005's precedent).
 
 ## Agent-Assisted Development
 
