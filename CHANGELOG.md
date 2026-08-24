@@ -191,3 +191,10 @@ All notable changes to Lineage will be documented here.
 - Documented the exact-version pinning flow as the current rollback path
   (#144) and the planned yank/tombstone semantics for `lineage package
   unpublish` (#145) in the README, ahead of either command landing.
+- The `.lineage` directory is now designed as a whole (#59, ADR 0015):
+  `.lineage/config.yaml` and `.lineage/materialized-<provider>.json` carry
+  a `schema` field, defaulted for existing files and rejected if
+  unsupported, matching `lineage.yaml`'s existing convention. `lineage
+  enable` now gitignores a project's `.lineage/` the first time it
+  creates one, since it can carry machine-local provider paths and
+  regenerable cache that should never be committed.
