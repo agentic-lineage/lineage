@@ -12,6 +12,8 @@ check these surfaces before calling the docs fresh.
   flow.
 - `CHANGELOG.md`: release history and complete behavior notes.
 - `docs/architecture.md`: system boundaries and trust model.
+- `docs/safety.md`: canonical safety model - what each command checks, what's
+  a warning vs. a block, and what's explicitly not implemented yet.
 - `docs/bootstrap-prompt.md`: canonical copy-paste prompt embedded by package
   pages.
 - `docs/guides/`: search-targeted explanations for package concepts and

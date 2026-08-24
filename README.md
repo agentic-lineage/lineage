@@ -198,7 +198,24 @@ lineage enable resume-workflow
 
 `lineage add` and `lineage package pull` accept `resume-workflow` for the latest version or `resume-workflow@0.2.0` for an exact version. Both verify the registry-reported digest against the package contents before keeping anything - see [docs/decisions/0012-v1-distribution-contract-and-receiver-activation.md](docs/decisions/0012-v1-distribution-contract-and-receiver-activation.md) for how the registry is structured.
 
+That same exact-ref form is also how you move a project back to a previous version - there's no separate `rollback` command yet ([#122](https://github.com/agentic-lineage/lineage/issues/122)), because pinning already covers it. The first time you pull that version, it's one command:
+
+```bash
+lineage add resume-workflow@0.1.0 --yes
+```
+
+If a different version of the same package is already pulled locally (a package directory is keyed by name, not version), pulling another version under the same name is refused rather than silently overwritten - `lineage add`/`lineage package pull` report the local/requested digest mismatch and tell you to remove the existing copy first. Pull the exact version you want under a different local name instead, then enable that:
+
+```bash
+lineage package pull resume-workflow@0.1.0 --as resume-workflow-0.1.0
+lineage enable resume-workflow-0.1.0
+```
+
+Either way, an exact version isn't a lower-trust path: the same manifest schema check, export-authority check, secret scan, and digest verification run as for any other pull. `lineage enable` stores whichever ref you gave it and doesn't drift to a newer version on its own - a project stays pinned until you explicitly `enable` a different ref.
+
 The first publish of a package name claims it for your verified GitHub login. To ship an update, bump `version` in `lineage.yaml` and run `lineage package publish` again - the registry accepts it because you're still the recorded owner of that name; a different GitHub account would be rejected. Run `lineage whoami` any time to check which identity is currently active, or `lineage logout` to clear it. For non-interactive use (CI), set `LINEAGE_PUBLISH_TOKEN` to any GitHub-issued token with `read:user` access instead of running `lineage login`.
+
+There's no way to remove a published version yet. The planned V1 behavior ([#123](https://github.com/agentic-lineage/lineage/issues/123)) is to **yank** a version - hide it from the package directory and from bare-name "latest" resolution behind a tombstone, while leaving it addressable by exact version for anyone who already depends on it - not to delete it. Until `lineage package unpublish` ships, treat every publish as effectively permanent and get the version right before running it.
 
 Published packages are browsable at [agenticlineage.vercel.app/packages](https://agenticlineage.vercel.app/packages). A package detail page includes the package version, digest, publisher, raw archive download, and a copy-paste bootstrap prompt for someone who has never installed Lineage before. The canonical bootstrap prompt lives in [docs/bootstrap-prompt.md](docs/bootstrap-prompt.md).
 
@@ -226,6 +243,8 @@ lineage workflow run resume-review claude --dry-run
 - Package behavior should be idempotent where possible.
 - Provider-specific behavior should stay behind clear adapter boundaries.
 - Declared capabilities are visible to receivers but are not a sandbox in this build.
+
+See [docs/safety.md](docs/safety.md) for the full safety model: what each command checks, what's only a warning, and what remains out of scope in this build.
 
 ## Development
 

@@ -182,3 +182,12 @@ All notable changes to Lineage will be documented here.
   also takes a durable snapshot of exactly what was enabled, and links
   it to the graph entry above via `snapshot_id`. Identical file content
   is stored once regardless of how many packages/versions reference it.
+- Added `docs/safety.md` as the canonical safety model (#143, #137):
+  maps every safety check to its pipeline stage, spells out secret-scan
+  and capability-declaration limits, and says plainly that PII/personal-
+  context detection and instruction-risk scanning are not implemented
+  yet. README, `docs/architecture.md`, `docs/guides/lineage-package.md`,
+  `AGENTS.md`, `SECURITY.md`, and `llms.txt` now link to it.
+- Documented the exact-version pinning flow as the current rollback path
+  (#144) and the planned yank/tombstone semantics for `lineage package
+  unpublish` (#145) in the README, ahead of either command landing.
