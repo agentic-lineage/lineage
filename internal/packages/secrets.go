@@ -53,6 +53,7 @@ var secretContentPatterns = []*regexp.Regexp{
 	// STS/assumed-role session key.
 	regexp.MustCompile(`\b(AKIA|ASIA)[0-9A-Z]{16}\b`),
 	regexp.MustCompile(`\bgh[pousr]_[A-Za-z0-9]{20,}`), // GitHub token prefixes (ghp_, gho_, ghu_, ghs_, ghr_)
+	regexp.MustCompile(`\bgithub_pat_[A-Za-z0-9_]{20,}`), // GitHub fine-grained PATs
 }
 
 // ScanForSecrets walks a package directory and flags files that look like
