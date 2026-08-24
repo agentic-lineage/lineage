@@ -76,12 +76,20 @@ adapter boundaries, and can preview what it would materialize before writing.
 
 - `lineage run claude --dry-run` previews Claude materialization.
 - `lineage run codex --dry-run` previews Codex materialization.
-- `lineage workflow run <workflow-name> <claude|codex> --dry-run` narrows the
-  launch plan to one exported workflow.
+- `lineage run cursor --dry-run` previews Cursor materialization (skills are
+  written as `.mdc` rule files under `.cursor/rules/`, since Cursor ignores a
+  plain `.md` file with no frontmatter — see the note below).
+- `lineage workflow run <workflow-name> <claude|codex|cursor> --dry-run` narrows
+  the launch plan to one exported workflow.
 
-The current adapters focus on Claude and Codex. The package shape is deliberately
-plain so future adapters can use the same manifest, skills, workflows, agents,
-policies, references, and setup material.
+The current adapters cover Claude, Codex, and Cursor. The package shape is
+deliberately plain so future adapters can use the same manifest, skills,
+workflows, agents, policies, references, and setup material.
+
+Cursor's real CLI binary isn't literally named `cursor` on most machines (it
+installs as `cursor-agent`, sometimes aliased `agent`), so `lineage run cursor`
+will usually need the `providers.cursor.binary` override shown below —
+`lineage doctor` says so explicitly if it can't find a match on `PATH`.
 
 ## Current Commands
 
@@ -107,7 +115,8 @@ lineage list
 lineage inspect <package-path-or-id>
 lineage run claude --dry-run
 lineage run codex --dry-run
-lineage workflow run <workflow-name> <claude|codex> [--dry-run] [--yes]
+lineage run cursor --dry-run
+lineage workflow run <workflow-name> <claude|codex|cursor> [--dry-run] [--yes]
 
 lineage install-shims
 lineage doctor
@@ -128,6 +137,8 @@ providers:
     binary: /path/to/real/claude
   codex:
     binary: /path/to/real/codex
+  cursor:
+    binary: /path/to/real/cursor-agent
 ```
 
 ## Quick Start

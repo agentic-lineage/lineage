@@ -97,9 +97,17 @@ func apply(projectRoot string, adapter provider.Provider, pkgs []packages.Packag
 	if err != nil {
 		return err
 	}
+	staged, err := stageSkills(adapter, desired)
+	if err != nil {
+		return err
+	}
 
+	finalSet := make(map[string]struct{}, len(staged))
+	for _, s := range staged {
+		finalSet[s.finalRel] = struct{}{}
+	}
 	for _, rel := range prev.SkillDirs {
-		if _, ok := desired[rel]; ok {
+		if _, ok := finalSet[rel]; ok {
 			continue
 		}
 		if err := os.RemoveAll(filepath.Join(projectRoot, rel)); err != nil {
@@ -107,20 +115,24 @@ func apply(projectRoot string, adapter provider.Provider, pkgs []packages.Packag
 		}
 	}
 
-	written := make([]string, 0, len(desired))
-	for rel, src := range desired {
-		dest := filepath.Join(projectRoot, rel)
+	written := make([]string, 0, len(staged))
+	for _, s := range staged {
+		dest := filepath.Join(projectRoot, s.finalRel)
 		if err := os.RemoveAll(dest); err != nil {
-			return fmt.Errorf("clear %s before staging: %w", rel, err)
+			return fmt.Errorf("clear %s before staging: %w", s.finalRel, err)
 		}
-		if err := copyDir(src, dest); err != nil {
-			return fmt.Errorf("stage skill into %s: %w", rel, err)
+		if s.copyFromDir != "" {
+			if err := copyDir(s.copyFromDir, dest); err != nil {
+				return fmt.Errorf("stage skill into %s: %w", s.finalRel, err)
+			}
+		} else if err := atomicfile.WriteFile(dest, s.renderedContent, 0o644); err != nil {
+			return fmt.Errorf("stage skill into %s: %w", s.finalRel, err)
 		}
-		written = append(written, rel)
+		written = append(written, s.finalRel)
 	}
 	sort.Strings(written)
 
-	if err := writeSummary(filepath.Join(projectRoot, adapter.ContextFile), pkgs, wf); err != nil {
+	if err := writeSummary(filepath.Join(projectRoot, adapter.ContextFile), adapter.ContextPreamble, pkgs, wf); err != nil {
 		return fmt.Errorf("update %s: %w", adapter.ContextFile, err)
 	}
 
@@ -143,9 +155,13 @@ func NeedsApproval(projectRoot string, adapter provider.Provider, pkgs []package
 	if err != nil {
 		return false, err
 	}
-	desiredDirs := make([]string, 0, len(desired))
-	for rel := range desired {
-		desiredDirs = append(desiredDirs, rel)
+	staged, err := stageSkills(adapter, desired)
+	if err != nil {
+		return false, err
+	}
+	desiredDirs := make([]string, 0, len(staged))
+	for _, s := range staged {
+		desiredDirs = append(desiredDirs, s.finalRel)
 	}
 	sort.Strings(desiredDirs)
 
@@ -163,6 +179,17 @@ func NeedsApprovalForWorkflow(projectRoot string, adapter provider.Provider, pkg
 	return NeedsApproval(projectRoot, adapter, []packages.Package{scoped})
 }
 
+// skillSource identifies one enabled skill's source directory together
+// with the package/skill names that produced it, so a provider's
+// RenderSkill (which needs those names, not just a path) can be called
+// without re-deriving them from the staged directory name — the same
+// ambiguity desiredSkillDirs' own doc comment describes.
+type skillSource struct {
+	dir       string
+	pkgName   string
+	skillName string
+}
+
 // desiredSkillDirs computes each enabled skill's staged directory name by
 // joining package name and skill name with "-". Neither is restricted
 // enough to make that join unambiguous on its own (manifest names can
@@ -172,19 +199,96 @@ func NeedsApprovalForWorkflow(projectRoot string, adapter provider.Provider, pkg
 // would make every staged directory harder to read, for a collision that
 // almost never happens), a genuine collision is detected and reported as
 // an error instead of one entry silently overwriting the other in the map.
-func desiredSkillDirs(adapter provider.Provider, pkgs []packages.Package) (map[string]string, error) {
-	desired := map[string]string{} // relative skill dir -> absolute source dir
+func desiredSkillDirs(adapter provider.Provider, pkgs []packages.Package) (map[string]skillSource, error) {
+	desired := map[string]skillSource{} // relative skill dir -> source
 	for _, pkg := range pkgs {
 		for _, skill := range pkg.Skills {
 			rel := filepath.Join(adapter.SkillsDir, pkg.Manifest.Name+"-"+skill)
-			src := filepath.Join(pkg.Path, "skills", skill)
-			if existing, ok := desired[rel]; ok && existing != src {
-				return nil, fmt.Errorf("skill directory name %q is claimed by both %s and %s - rename one of these skills or packages to disambiguate", rel, existing, src)
+			src := skillSource{
+				dir:       filepath.Join(pkg.Path, "skills", skill),
+				pkgName:   pkg.Manifest.Name,
+				skillName: skill,
+			}
+			if existing, ok := desired[rel]; ok && existing.dir != src.dir {
+				return nil, fmt.Errorf("skill directory name %q is claimed by both %s and %s - rename one of these skills or packages to disambiguate", rel, existing.dir, src.dir)
 			}
 			desired[rel] = src
 		}
 	}
 	return desired, nil
+}
+
+// stagedSkill is one skill's final, resolved placement on disk: either a
+// verbatim directory copy (copyFromDir set) or provider-rendered file
+// content (renderedContent set), exactly one of the two. Computing this
+// fully before any disk writes happen is what lets both apply's
+// stale-removal pass and NeedsApproval compare against the *actual* path
+// that will exist on disk — which, for a provider with RenderSkill set,
+// is not the same string as desiredSkillDirs' map key (see stageSkills).
+type stagedSkill struct {
+	finalRel        string
+	copyFromDir     string
+	renderedContent []byte
+}
+
+// stageSkills resolves every entry in desired to its final on-disk path
+// and content, calling adapter.RenderSkill where the provider has one
+// instead of assuming a verbatim directory copy. It does no disk writes —
+// callers use the result both to know what to write and, via finalRel, to
+// know what counts as "still desired" for stale-removal, since a rendered
+// skill's finalRel (e.g. ".../pkg-skill.mdc") differs from its
+// desiredSkillDirs key (".../pkg-skill").
+func stageSkills(adapter provider.Provider, desired map[string]skillSource) ([]stagedSkill, error) {
+	staged := make([]stagedSkill, 0, len(desired))
+	for rel, src := range desired {
+		if adapter.RenderSkill == nil {
+			staged = append(staged, stagedSkill{finalRel: rel, copyFromDir: src.dir})
+			continue
+		}
+		files, err := readSkillFiles(src.dir)
+		if err != nil {
+			return nil, fmt.Errorf("read skill %s: %w", rel, err)
+		}
+		filename, content, err := adapter.RenderSkill(src.pkgName, src.skillName, files)
+		if err != nil {
+			return nil, fmt.Errorf("render skill %s for %s: %w", rel, adapter.Name, err)
+		}
+		staged = append(staged, stagedSkill{
+			finalRel:        filepath.Join(filepath.Dir(rel), filename),
+			renderedContent: content,
+		})
+	}
+	return staged, nil
+}
+
+// readSkillFiles reads every regular file under dir into memory, keyed by
+// its path relative to dir, for a provider's RenderSkill to transform.
+// Refuses symlinks for the same reason copyDir does — a package's skill
+// content is untrusted until materialized.
+func readSkillFiles(dir string) (map[string][]byte, error) {
+	files := map[string][]byte{}
+	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if d.Type()&os.ModeSymlink != 0 {
+			return fmt.Errorf("refusing to read symlink %s", path)
+		}
+		rel, err := filepath.Rel(dir, path)
+		if err != nil {
+			return err
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		files[rel] = data
+		return nil
+	})
+	return files, err
 }
 
 func equalStrings(a, b []string) bool {
@@ -226,7 +330,7 @@ func saveState(projectRoot, providerName string, s state) error {
 	return atomicfile.WriteFile(path, data, 0o644)
 }
 
-func writeSummary(path string, pkgs []packages.Package, wf *WorkflowSequence) error {
+func writeSummary(path, preamble string, pkgs []packages.Package, wf *WorkflowSequence) error {
 	block := renderSummaryBlock(pkgs, wf)
 
 	existing, err := os.ReadFile(path)
@@ -234,7 +338,7 @@ func writeSummary(path string, pkgs []packages.Package, wf *WorkflowSequence) er
 		return err
 	}
 
-	next := block
+	next := preamble + block
 	if err == nil {
 		next = replaceBlock(string(existing), block)
 	}

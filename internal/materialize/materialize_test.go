@@ -169,14 +169,117 @@ func TestApplyStagesSkillsForCodexAdapter(t *testing.T) {
 	}
 }
 
+func TestApplyStagesSkillsForCursorAdapter(t *testing.T) {
+	root := t.TempDir()
+	pkg := buildTestPackageWithDescribedSkill(t, "review-pack", "review", "Use when reviewing a pull request.")
+	cursor, err := provider.Get("cursor")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Apply(root, cursor, []packages.Package{pkg}); err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+
+	ruleFile := filepath.Join(root, ".cursor", "rules", "review-pack-review.mdc")
+	info, err := os.Stat(ruleFile)
+	if err != nil {
+		t.Fatalf("expected staged rule at %s: %v", ruleFile, err)
+	}
+	if info.IsDir() {
+		t.Fatalf("%s is a directory, want a flat .mdc file (Cursor doesn't scan subdirectories the way SkillsDir's default copy would produce)", ruleFile)
+	}
+	ruleData, err := os.ReadFile(ruleFile)
+	if err != nil {
+		t.Fatalf("read rule file: %v", err)
+	}
+	if !containsAll(string(ruleData), "description: Use when reviewing a pull request.", "alwaysApply: false") {
+		t.Fatalf("rule file missing expected frontmatter:\n%s", ruleData)
+	}
+
+	contextData, err := os.ReadFile(filepath.Join(root, ".cursor", "rules", "lineage.mdc"))
+	if err != nil {
+		t.Fatalf("read lineage.mdc: %v", err)
+	}
+	content := string(contextData)
+	if !containsAll(content, "alwaysApply: true", beginMarker, endMarker, "review-pack@0.1.0") {
+		t.Fatalf("lineage.mdc missing expected content:\n%s", content)
+	}
+}
+
+func TestApplyCursorContextPreambleSurvivesReapply(t *testing.T) {
+	root := t.TempDir()
+	pkg := buildTestPackageWithDescribedSkill(t, "review-pack", "review", "Use when reviewing a pull request.")
+	cursor, err := provider.Get("cursor")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Apply(root, cursor, []packages.Package{pkg}); err != nil {
+		t.Fatalf("Apply() #1 error = %v", err)
+	}
+	other := buildTestPackageWithDescribedSkill(t, "other-pack", "other-skill", "Use for the other thing.")
+	if err := Apply(root, cursor, []packages.Package{pkg, other}); err != nil {
+		t.Fatalf("Apply() #2 error = %v", err)
+	}
+
+	content, err := os.ReadFile(filepath.Join(root, ".cursor", "rules", "lineage.mdc"))
+	if err != nil {
+		t.Fatalf("read lineage.mdc: %v", err)
+	}
+	// The preamble is only ever prefixed on creation; a second Apply must
+	// not duplicate it, and replaceBlock must have left it alone since it
+	// sits outside the lineage:begin/lineage:end markers.
+	if got := strings.Count(string(content), "alwaysApply: true"); got != 1 {
+		t.Fatalf("lineage.mdc has %d \"alwaysApply: true\" occurrences after two Apply calls, want exactly 1:\n%s", got, content)
+	}
+	if !strings.Contains(string(content), "other-pack@0.1.0") {
+		t.Fatalf("lineage.mdc not refreshed with the second package, got:\n%s", content)
+	}
+}
+
+// TestApplyRemovesStaleCursorRuleWhenPackageDisabled covers a regression
+// specific to a RenderSkill-backed provider: the rendered file's final
+// path (".../pkg-skill.mdc") is not the same string as desiredSkillDirs'
+// map key (".../pkg-skill"), so the stale-removal pass must compare
+// against stageSkills' resolved finalRel, not the raw desired keys, or a
+// disabled package's rule file would be orphaned on disk forever.
+func TestApplyRemovesStaleCursorRuleWhenPackageDisabled(t *testing.T) {
+	root := t.TempDir()
+	pkg := buildTestPackageWithDescribedSkill(t, "review-pack", "review", "Use when reviewing a pull request.")
+	cursor, err := provider.Get("cursor")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Apply(root, cursor, []packages.Package{pkg}); err != nil {
+		t.Fatalf("Apply() #1 error = %v", err)
+	}
+	ruleFile := filepath.Join(root, ".cursor", "rules", "review-pack-review.mdc")
+	if _, err := os.Stat(ruleFile); err != nil {
+		t.Fatalf("expected rule file staged before disabling: %v", err)
+	}
+
+	if err := Apply(root, cursor, nil); err != nil {
+		t.Fatalf("Apply() #2 (disabled) error = %v", err)
+	}
+	if _, err := os.Stat(ruleFile); !os.IsNotExist(err) {
+		t.Fatalf("expected rule file removed after disabling its package, stat err = %v", err)
+	}
+}
+
 func TestApplyKeepsProvidersIsolated(t *testing.T) {
 	root := t.TempDir()
-	pkg := buildTestPackage(t, "review-pack", "review")
+	pkg := buildTestPackageWithDescribedSkill(t, "review-pack", "review", "Use when reviewing a pull request.")
 	claude, err := provider.Get("claude")
 	if err != nil {
 		t.Fatal(err)
 	}
 	codex, err := provider.Get("codex")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cursor, err := provider.Get("cursor")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,9 +290,12 @@ func TestApplyKeepsProvidersIsolated(t *testing.T) {
 	if err := Apply(root, codex, []packages.Package{pkg}); err != nil {
 		t.Fatalf("Apply(codex) error = %v", err)
 	}
+	if err := Apply(root, cursor, []packages.Package{pkg}); err != nil {
+		t.Fatalf("Apply(cursor) error = %v", err)
+	}
 
-	// Disabling everything for one provider must not touch the other
-	// provider's staged content or state.
+	// Disabling everything for one provider must not touch the others'
+	// staged content or state.
 	if err := Apply(root, codex, nil); err != nil {
 		t.Fatalf("Apply(codex, none) error = %v", err)
 	}
@@ -197,6 +303,10 @@ func TestApplyKeepsProvidersIsolated(t *testing.T) {
 	claudeSkill := filepath.Join(root, ".claude", "skills", "review-pack-review")
 	if _, err := os.Stat(claudeSkill); err != nil {
 		t.Fatalf("expected claude skill to remain staged: %v", err)
+	}
+	cursorRule := filepath.Join(root, ".cursor", "rules", "review-pack-review.mdc")
+	if _, err := os.Stat(cursorRule); err != nil {
+		t.Fatalf("expected cursor rule to remain staged: %v", err)
 	}
 	codexSkill := filepath.Join(root, ".agents", "skills", "review-pack-review")
 	if _, err := os.Stat(codexSkill); !os.IsNotExist(err) {
@@ -312,6 +422,26 @@ func buildTestPackage(t *testing.T, name, skill string) packages.Package {
 		t.Fatal(err)
 	}
 	mustWriteMaterialize(t, filepath.Join(pkgDir, "skills", skill, "SKILL.md"), "# "+skill)
+
+	pkg, err := packages.Discover(pkgDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return pkg
+}
+
+// buildTestPackageWithDescribedSkill is buildTestPackage's SKILL.md with
+// real frontmatter instead of a bare heading, for tests exercising a
+// provider (Cursor) whose RenderSkill requires a description to produce
+// anything at all.
+func buildTestPackageWithDescribedSkill(t *testing.T, name, skill, description string) packages.Package {
+	t.Helper()
+	pkgDir := filepath.Join(t.TempDir(), name)
+	if err := packages.InitPackage(pkgDir, name); err != nil {
+		t.Fatal(err)
+	}
+	skillMD := "---\nname: " + skill + "\ndescription: " + description + "\n---\n\n# " + skill + "\n"
+	mustWriteMaterialize(t, filepath.Join(pkgDir, "skills", skill, "SKILL.md"), skillMD)
 
 	pkg, err := packages.Discover(pkgDir)
 	if err != nil {
