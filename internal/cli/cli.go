@@ -742,6 +742,16 @@ func enableRef(ref, home string, autoApprove bool, stdin *bufio.Reader, stdout, 
 		return false, err
 	}
 
+	// A project's .lineage/ mixes machine-local state (config.yaml's
+	// provider binary paths) with regenerable cache - it should never land
+	// in the receiver's repo. EnsureGitignored is idempotent, so reinforce
+	// the entry on every successful enable in case it was removed
+	// accidentally.
+	if err := config.EnsureGitignored(projectRoot); err != nil {
+		fmt.Fprintln(stderr, err)
+		return false, err
+	}
+
 	fmt.Fprintf(stdout, "enabled package %s in %s\n", storedRef, configPath)
 	return true, nil
 }
