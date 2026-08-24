@@ -5,7 +5,9 @@ import (
 	"bytes"
 	"compress/gzip"
 	"io"
+	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -114,4 +116,76 @@ func readTarNames(t *testing.T, data []byte) []string {
 		names = append(names, hdr.Name)
 	}
 	return names
+}
+
+// TestExportImportPreservesExecutableBit covers #165: export hardcoded
+// Mode 0o644 on every tar entry and import wrote every file at 0o644, so a
+// helper script under adapters/ lost +x on export and never got it back.
+func TestExportImportPreservesExecutableBit(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX execute bits are not meaningful on Windows")
+	}
+	root := filepath.Join(t.TempDir(), "exec-pack")
+	if err := InitPackage(root, "exec-pack"); err != nil {
+		t.Fatal(err)
+	}
+	script := filepath.Join(root, "adapters", "run.sh")
+	mustWrite(t, script, "#!/bin/sh\necho hi\n")
+	if err := os.Chmod(script, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	plain := filepath.Join(root, "references", "notes.md")
+	mustWrite(t, plain, "# notes\n")
+
+	var buf bytes.Buffer
+	if err := Export(root, &buf); err != nil {
+		t.Fatal(err)
+	}
+
+	destParent := t.TempDir()
+	name, err := Import(&buf, destParent, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	imported := filepath.Join(destParent, name)
+
+	gotScript, err := os.Stat(filepath.Join(imported, "adapters", "run.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotScript.Mode().Perm() != 0o755 {
+		t.Errorf("adapters/run.sh mode = %o after a round trip, want 755", gotScript.Mode().Perm())
+	}
+
+	gotPlain, err := os.Stat(filepath.Join(imported, "references", "notes.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotPlain.Mode().Perm() != 0o644 {
+		t.Errorf("references/notes.md mode = %o after a round trip, want 644", gotPlain.Mode().Perm())
+	}
+}
+
+// TestContentModeCollapsesUnsafeBits asserts that only the exec bit
+// survives: package content is untrusted, so an archive must not be able to
+// request setuid, setgid, sticky, or group/world-writable permissions.
+func TestContentModeCollapsesUnsafeBits(t *testing.T) {
+	tests := []struct {
+		in   os.FileMode
+		want os.FileMode
+	}{
+		{0o644, 0o644},
+		{0o600, 0o644},
+		{0o755, 0o755},
+		{0o700, 0o755},
+		{0o777, 0o755},
+		{0o666, 0o644},
+		{os.FileMode(0o4755) | os.ModeSetuid, 0o755},
+		{os.FileMode(0o2644) | os.ModeSetgid, 0o644},
+	}
+	for _, tt := range tests {
+		if got := ContentMode(tt.in); got != tt.want {
+			t.Errorf("ContentMode(%o) = %o, want %o", tt.in, got, tt.want)
+		}
+	}
 }

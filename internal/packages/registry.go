@@ -39,6 +39,19 @@ func (c RegistryConfig) baseURL() string {
 	return DefaultRegistryURL
 }
 
+// registryRequestTimeout bounds a single registry request end to end,
+// including reading the response body. Without it a hung or slow-drip
+// registry response stalls the command indefinitely with no way out but
+// Ctrl-C.
+const registryRequestTimeout = 60 * time.Second
+
+// registryClient returns the HTTP client every registry call uses, so
+// publish, metadata resolution, and archive download share one timeout
+// policy rather than some of them falling back to http.DefaultClient.
+func registryClient() *http.Client {
+	return &http.Client{Timeout: registryRequestTimeout}
+}
+
 type PublishResult struct {
 	Name             string
 	Version          string
@@ -94,8 +107,7 @@ func Publish(dir string, cfg RegistryConfig) (PublishResult, error) {
 	req.Header.Set("Content-Type", "application/gzip")
 	req.Header.Set("Authorization", "Bearer "+cfg.Token)
 
-	client := &http.Client{Timeout: 60 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := registryClient().Do(req)
 	if err != nil {
 		return PublishResult{}, fmt.Errorf("publish %s@%s: %w", report.Manifest.Name, report.Manifest.Version, err)
 	}
@@ -142,7 +154,7 @@ func Pull(ref string, cfg RegistryConfig, destParent, asName string) (string, er
 		return "", err
 	}
 
-	resp, err := http.Get(cfg.baseURL() + meta.DownloadPath)
+	resp, err := registryClient().Get(cfg.baseURL() + meta.DownloadPath)
 	if err != nil {
 		return "", fmt.Errorf("download %s: %w", ref, err)
 	}
@@ -176,7 +188,7 @@ func Pull(ref string, cfg RegistryConfig, destParent, asName string) (string, er
 }
 
 func fetchPackageMetadata(ref string, cfg RegistryConfig) (packageMetadata, error) {
-	resp, err := http.Get(cfg.baseURL() + "/api/packages/" + url.PathEscape(ref))
+	resp, err := registryClient().Get(cfg.baseURL() + "/api/packages/" + url.PathEscape(ref))
 	if err != nil {
 		return packageMetadata{}, fmt.Errorf("resolve %s: %w", ref, err)
 	}

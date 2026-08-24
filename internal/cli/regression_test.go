@@ -296,3 +296,59 @@ func TestInitWorkspaceRejectsTraversingName(t *testing.T) {
 		t.Fatalf("stat workspace packages dir: %v", err)
 	}
 }
+
+// TestDisableFromSubdirectoryMatchesStoredRef covers #162: `lineage enable
+// ./local-pack` from a subdirectory stores the ref re-expressed against the
+// project root, so `lineage disable ./local-pack` from that same directory
+// has to normalize its argument the same way before matching. Comparing the
+// literal argument made disable reject the exact ref enable had just
+// accepted.
+func TestDisableFromSubdirectoryMatchesStoredRef(t *testing.T) {
+	tmp := t.TempDir()
+	home := filepath.Join(tmp, "home")
+	project := filepath.Join(tmp, "project")
+	sub := filepath.Join(project, "packages", "sub")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	rootConfigPath := config.ProjectConfigPath(project)
+	if err := config.SaveProjectConfig(rootConfigPath, config.DefaultProjectConfig()); err != nil {
+		t.Fatal(err)
+	}
+	pkgDir := filepath.Join(sub, "local-pack")
+	if err := packages.InitPackage(pkgDir, "local-pack"); err != nil {
+		t.Fatal(err)
+	}
+
+	oldHome := os.Getenv(config.HomeEnv)
+	t.Setenv(config.HomeEnv, home)
+	defer t.Setenv(config.HomeEnv, oldHome)
+	oldWd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(oldWd)
+	if err := os.Chdir(sub); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if err := Execute(nil, []string{"enable", "./local-pack"}, nil, &stdout, &stderr); err != nil {
+		t.Fatalf("enable error = %v stderr=%s", err, stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if err := Execute(nil, []string{"disable", "./local-pack", "--yes"}, nil, &stdout, &stderr); err != nil {
+		t.Fatalf("disable error = %v stderr=%s; disable must normalize the ref the same way enable did", err, stderr.String())
+	}
+
+	rootCfg, err := config.LoadProjectConfig(rootConfigPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rootCfg.EnabledPackages) != 0 {
+		t.Fatalf("root config EnabledPackages = %#v, want empty after disable", rootCfg.EnabledPackages)
+	}
+}

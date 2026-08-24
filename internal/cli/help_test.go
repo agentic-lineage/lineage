@@ -70,3 +70,47 @@ func TestPackageSubcommandHelpDoesNotTreatFlagAsArgument(t *testing.T) {
 		}
 	}
 }
+
+func TestHelpFlagRecognizedAfterOtherArguments(t *testing.T) {
+	cases := []struct {
+		args []string
+		wantUsage string
+	}{
+		{[]string{"enable", "--yes", "--help"}, "usage: lineage enable"},
+		{[]string{"add", "--yes", "-h"}, "usage: lineage add"},
+		{[]string{"inspect", "--yaml", "--help"}, "usage: lineage inspect"},
+		{
+			[]string{"package", "export", ".", "-o", "out.tgz", "--help"},
+			"usage: lineage package export",
+		},
+		{
+			[]string{"package", "pull", "example", "--as", "renamed", "-h"},
+			"usage: lineage package pull",
+		},
+	}
+
+	for _, tc := range cases {
+		var stdout, stderr bytes.Buffer
+
+		err := Execute(nil, tc.args, nil, &stdout, &stderr)
+		if err != nil {
+			t.Fatalf("%v: error = %v; stderr = %q",
+				tc.args, err, stderr.String())
+		}
+
+		if !strings.HasPrefix(stdout.String(), tc.wantUsage) {
+			t.Fatalf("%v: stdout = %q, want prefix %q",
+				tc.args, stdout.String(), tc.wantUsage)
+		}
+
+		if stderr.Len() != 0 {
+			t.Fatalf("%v: stderr = %q, want empty", tc.args, stderr.String())
+		}
+	}
+}
+
+func TestHasHelpFlagRequiresExactToken(t *testing.T) {
+	if hasHelpFlag([]string{"--helpful", "docs/--help-example"}) {
+		t.Fatal("similar strings must not be interpreted as help flags")
+	}
+}

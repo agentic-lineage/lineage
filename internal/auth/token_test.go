@@ -63,3 +63,30 @@ func TestTokenPathIsUnderHome(t *testing.T) {
 		t.Errorf("TokenPath(%q) = %q, want %q", home, got, want)
 	}
 }
+
+// TestSaveTokenTightensExistingLoosePermissions covers #159: the mode
+// passed to os.WriteFile only applies when the file is created, so a
+// github_token that already existed with loose permissions - from an older
+// Lineage, a manual edit, a restored backup - kept them across every
+// subsequent save.
+func TestSaveTokenTightensExistingLoosePermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission bits are not meaningful on Windows")
+	}
+	home := t.TempDir()
+	if err := os.WriteFile(TokenPath(home), []byte("gho_stale\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := SaveToken(home, "gho_fresh"); err != nil {
+		t.Fatalf("SaveToken() error = %v", err)
+	}
+
+	info, err := os.Stat(TokenPath(home))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mode := info.Mode().Perm(); mode&0o077 != 0 {
+		t.Errorf("token file mode = %o after overwriting a pre-existing world-readable file, want no group/other permission bits", mode)
+	}
+}
