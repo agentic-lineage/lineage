@@ -9,9 +9,10 @@ import (
 
 	"github.com/agentic-lineage/lineage/internal/config"
 	"github.com/agentic-lineage/lineage/internal/packages"
+	"github.com/agentic-lineage/lineage/internal/provider"
 )
 
-func TestEnableAndDryRun(t *testing.T) {
+func TestEnableAndDryRunForEveryProvider(t *testing.T) {
 	tmp := t.TempDir()
 	home := filepath.Join(tmp, "home")
 	project := filepath.Join(tmp, "project")
@@ -45,21 +46,41 @@ func TestEnableAndDryRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg.Providers = map[string]config.Provider{"codex": {Binary: "/bin/echo"}}
+
+	cfg.Providers = map[string]config.Provider{}
+
+	for _, adapter := range provider.Known() {
+		cfg.Providers[ adapter.Name ] = config.Provider{
+			Binary: "/bin/echo",
+		}
+	}
+
 	if err := config.SaveProjectConfig(config.ProjectConfigPath(project), cfg); err != nil {
 		t.Fatal(err)
 	}
 
-	stdout.Reset()
-	stderr.Reset()
-	if err := Execute(nil, []string{"run", "codex", "--dry-run"}, nil, &stdout, &stderr); err != nil {
-		t.Fatalf("dry-run error = %v stderr=%s", err, stderr.String())
-	}
-	if !strings.Contains(stdout.String(), "provider: codex") {
-		t.Fatalf("dry-run output = %s", stdout.String())
-	}
-	if !strings.Contains(stdout.String(), "agent-pack@0.1.0") {
-		t.Fatalf("dry-run output = %s", stdout.String())
+	for _, adapter := range provider.Known() {
+		t.Run(adapter.Name, func(t *testing.T) {
+			stdout.Reset()
+			stderr.Reset()
+
+			err := Execute(
+				nil, []string{"run", adapter.Name, "--dry-run"}, nil, &stdout, &stderr,
+			)
+
+			if err != nil {
+				t.Fatalf("dry-run error = %v stderr = %s", err, stderr.String())
+			}
+
+			output := stdout.String()
+			if !strings.Contains(output, "real_binary: /bin/echo") {
+				t.Errorf("dry-run output does not name configured binary:\n%s", output)
+			}
+
+			if !strings.Contains(output, "agent-pack@0.1.0") {
+				t.Errorf("dry-run output does not name enabled package:\n%s", output)
+			}
+		})
 	}
 }
 
@@ -229,8 +250,11 @@ func TestRunUnknownProviderListsKnownProviders(t *testing.T) {
 	if err == nil {
 		t.Fatal("Execute(run does-not-exist) error = nil, want error")
 	}
-	if !strings.Contains(stderr.String(), "claude") || !strings.Contains(stderr.String(), "codex") {
-		t.Fatalf("stderr = %q, want it to list known providers", stderr.String())
+
+	for _, adapter := range provider.Known() {
+		if !strings.Contains(stderr.String(), adapter.Name) {
+			t.Fatalf("stderr = %q, want it to list known providers", stderr.String())
+		}
 	}
 }
 
@@ -238,8 +262,11 @@ func TestUsageListsKnownProvidersNotHardcoded(t *testing.T) {
 	var stdout bytes.Buffer
 	printUsage(&stdout)
 	out := stdout.String()
-	if !strings.Contains(out, "claude") || !strings.Contains(out, "codex") {
-		t.Fatalf("usage = %q, want it to mention every registered provider", out)
+
+	for _, adapter := range provider.Known() {
+		if !strings.Contains(out, adapter.Name) {
+			t.Fatalf("usage = %q, want it to mention every registered provider", out)
+		}
 	}
 }
 

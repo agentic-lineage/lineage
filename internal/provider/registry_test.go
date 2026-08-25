@@ -1,17 +1,40 @@
 package provider
 
 import (
+	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
 
-func TestKnownIncludesClaudeAndCodex(t *testing.T) {
-	names := map[string]bool{}
-	for _, p := range Known() {
-		names[p.Name] = true
+//	 This gives each future provider one obvious test addition and verifies all
+// three parts of its adapter.
+//
+//	 The test duplicates the registry data: this way, if someone accidentally
+// changes Auggie's path to .augment/rules, the test should fail and force them
+// to explain the contract change.
+func TestKnownProviders(t *testing.T) {
+	want := []Provider{
+		{
+			Name:        "claude",
+			SkillsDir:   filepath.Join(".claude", "skills"),
+			ContextFile: "CLAUDE.md",
+		},
+		{
+			Name:        "codex",
+			SkillsDir:   filepath.Join(".agents", "skills"),
+			ContextFile: "AGENTS.md",
+		},
+		{
+			Name:        "auggie",
+			SkillsDir:   filepath.Join(".augment", "skills"),
+			ContextFile: "AGENTS.md",
+		},
 	}
-	if !names["claude"] || !names["codex"] {
-		t.Fatalf("Known() = %v, want claude and codex present", names)
+
+	got := Known()
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("Known() = %#v, want %#v", got, want)
 	}
 }
 
