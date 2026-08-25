@@ -1,9 +1,9 @@
-# How To Share Claude Code And Codex Workflows
+# How To Share Claude Code, Codex, And Auggie Workflows
 
-Lineage shares Claude Code and Codex workflows by packaging the local files
-around the workflow, publishing or exporting that package, and letting the
-receiver inspect and enable it in their own project. The receiver keeps using
-their own agent tools; Lineage supplies the portable workflow environment.
+Lineage shares Claude Code, Codex, and Auggie workflows by packaging the local
+files around the workflow, publishing or exporting that package, and letting
+the receiver inspect and enable it in their own project. The receiver keeps
+using their own agent tools; Lineage supplies the portable workflow environment.
 
 ## Author Flow
 
@@ -24,6 +24,7 @@ lineage package validate ./resume-workflow
 lineage enable ./resume-workflow
 lineage run claude --dry-run
 lineage run codex --dry-run
+lineage run auggie --dry-run
 ```
 
 Publish through the Lineage registry:
@@ -59,6 +60,7 @@ Preview the provider-specific plan before writing files:
 ```bash
 lineage run claude --dry-run
 lineage run codex --dry-run
+lineage run auggie --dry-run
 ```
 
 Run one exported workflow when the package contains several:
@@ -66,6 +68,7 @@ Run one exported workflow when the package contains several:
 ```bash
 lineage workflow run resume-review claude --dry-run
 lineage workflow run resume-review codex --dry-run
+lineage workflow run resume-review auggie --dry-run
 ```
 
 ## What Receivers Can Inspect
@@ -75,7 +78,13 @@ Before enabling, receivers can review:
 - `lineage.yaml` manifest metadata, exports, entrypoints, and capabilities.
 - `skills/`, `workflows/`, `agents/`, `policies/`, and `references/` content.
 - Validation output, including portability and safety findings.
-- Dry-run materialization output for Claude Code or Codex.
+- Dry-run materialization output for Claude Code, Codex, or Auggie.
+
+To receive an Auggie workflow, install `@augmentcode/auggie` with Node.js 22 or
+later and run `auggie login` locally before launching. Lineage stages native
+skills in `.augment/skills/` and its generated package summary in `AGENTS.md`.
+Augment credentials, sessions, settings, user rules, and MCP configuration stay
+receiver-local and are outside the adapter's current scope.
 
 Lineage's goal is to make reusable agent workflows portable without hiding what
 will be staged locally.

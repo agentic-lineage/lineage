@@ -76,12 +76,13 @@ adapter boundaries, and can preview what it would materialize before writing.
 
 - `lineage run claude --dry-run` previews Claude materialization.
 - `lineage run codex --dry-run` previews Codex materialization.
-- `lineage workflow run <workflow-name> <claude|codex> --dry-run` narrows the
+- `lineage run auggie --dry-run` previews Auggie materialization.
+- `lineage workflow run <workflow-name> <claude|codex|auggie> --dry-run` narrows the
   launch plan to one exported workflow.
 
-The current adapters focus on Claude and Codex. The package shape is deliberately
-plain so future adapters can use the same manifest, skills, workflows, agents,
-policies, references, and setup material.
+The current adapters support Claude, Codex, and Auggie. The package shape is
+deliberately plain so future adapters can use the same manifest, skills,
+workflows, agents, policies, references, and setup material.
 
 ## Current Commands
 
@@ -107,7 +108,8 @@ lineage list
 lineage inspect <package-path-or-id>
 lineage run claude --dry-run
 lineage run codex --dry-run
-lineage workflow run <workflow-name> <claude|codex> [--dry-run] [--yes]
+lineage run auggie --dry-run
+lineage workflow run <workflow-name> <claude|codex|auggie> [--dry-run] [--yes]
 
 lineage install-shims
 lineage doctor
@@ -128,7 +130,30 @@ providers:
     binary: /path/to/real/claude
   codex:
     binary: /path/to/real/codex
+  auggie:
+    binary: /path/to/real/auggie
 ```
+
+### Auggie setup and limitations
+
+Auggie is installed and authenticated separately on the receiving machine. It
+currently requires Node.js 22 or later:
+
+```bash
+npm install -g @augmentcode/auggie
+auggie login
+lineage run auggie --dry-run
+```
+
+The adapter finds `auggie` on `PATH`, or uses `providers.auggie.binary` when
+configured. When approved, Lineage stages package skills in
+`.augment/skills/`, updates its generated section in the project's `AGENTS.md`,
+and launches Auggie with the supplied provider arguments.
+
+Lineage does not read, package, or materialize Augment credentials, login or
+session state, settings, user rules, MCP configuration, or other machine-local
+files under `~/.augment`. Configure those features locally with Auggie. Auggie
+is currently beta, so its own platform and terminal limitations still apply.
 
 ## Quick Start
 
@@ -150,7 +175,8 @@ Preview the launch plan:
 lineage run claude --dry-run
 ```
 
-Install local shims when you want commands such as `claude` or `codex` to enter Lineage first:
+Install local shims when you want commands such as `claude`, `codex`, or
+`auggie` to enter Lineage first:
 
 ```bash
 lineage install-shims
