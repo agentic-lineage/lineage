@@ -1383,7 +1383,7 @@ func pathIndexOf(pathEntries []string, dir string) int {
 func printUsage(w io.Writer) {
 	fmt.Fprintln(w, strings.TrimSpace(fmt.Sprintf(`
 Lineage - package a working agent setup, share it, and run it through your
-own Claude or Codex.
+own Claude, Codex, or Auggie.
 
 Usage:
   lineage <command> [arguments]
@@ -1414,7 +1414,7 @@ Using a package:
 Setup:
   init user                               create the user package directory
   init workspace <name>                   create a shared workspace
-  install-shims                           put lineage in front of claude/codex on PATH
+  install-shims                           put lineage in front of claude/codex/auggie on PATH
   doctor                                  check config, PATH, and provider setup
 
   -h, --help                              show this help
