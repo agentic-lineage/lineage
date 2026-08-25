@@ -82,30 +82,69 @@ func TestApplyRejectsCollidingSkillDirNames(t *testing.T) {
 	}
 }
 
-func TestApplyStagesSkillsAndWritesContextFile(t *testing.T) {
-	root := t.TempDir()
+func TestApplyStagesSkillsAndWritesContextForEveryProvider(t *testing.T) {
 	pkg := buildTestPackage(t, "review-pack", "review")
 
-	claude, err := provider.Get("claude")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := Apply(root, claude, []packages.Package{pkg}); err != nil {
-		t.Fatalf("Apply() error = %v", err)
-	}
+	for _, adapter := range provider.Known() {
+		t.Run(adapter.Name, func(t *testing.T) {
+			root := t.TempDir()
 
-	skillFile := filepath.Join(root, ".claude", "skills", "review-pack-review", "SKILL.md")
-	if _, err := os.Stat(skillFile); err != nil {
-		t.Fatalf("expected staged skill at %s: %v", skillFile, err)
-	}
+			if err := Apply(root, adapter, []packages.Package{pkg}); err != nil {
+				t.Fatalf("Apply() error = %v", err)
+			}
 
-	contextData, err := os.ReadFile(filepath.Join(root, "CLAUDE.md"))
-	if err != nil {
-		t.Fatalf("read CLAUDE.md: %v", err)
-	}
-	content := string(contextData)
-	if !containsAll(content, beginMarker, endMarker, "review-pack@0.1.0") {
-		t.Fatalf("CLAUDE.md missing expected content:\n%s", content)
+			skillFile := filepath.Join(
+				root,
+				adapter.SkillsDir,
+				"review-pack-review",
+				"SKILL.md",
+			)
+
+			if _, err := os.Stat(skillFile); err != nil {
+				t.Fatalf(
+					"expected %s skill at %s: %v",
+					adapter.Name,
+					skillFile,
+					err,
+				)
+			}
+
+			contextPath := filepath.Join(root, adapter.ContextFile)
+			contextData, err := os.ReadFile(contextPath)
+			if err != nil {
+				t.Fatalf("read %s: %v", adapter.ContextFile, err)
+			}
+
+			if !containsAll(
+				string(contextData), beginMarker, endMarker, "review-pack@0.1.0",
+			) {
+				t.Fatalf(
+					"%s missing expected content:\n%s", adapter.ContextFile, contextData,
+				)
+			}
+
+			statePath := filepath.Join(
+				root, ".lineage", "materialized-" + adapter.Name + ".json",
+			)
+
+			stateData, err := os.ReadFile(statePath)
+			if err != nil {
+				t.Fatalf(
+					"read %s materialization state: %v", adapter.Name, err,
+				)
+			}
+
+			expectedSkillDir := filepath.Join(
+				adapter.SkillsDir, "review-pack-review",
+			)
+
+			if !strings.Contains(string(stateData), expectedSkillDir) {
+				t.Fatalf(
+					"%s state missing skill path %q:\n%s", adapter.Name,
+					expectedSkillDir, stateData,
+				)
+			}
+		})
 	}
 }
 
@@ -140,33 +179,6 @@ func TestApplyCapsStagedFilePermissions(t *testing.T) {
 			t.Errorf("staged file mode = %v, want no group/other write bit (source was 0o777, umask forced to 0 so the OS can't mask this for us)", info.Mode().Perm())
 		}
 	})
-}
-
-func TestApplyStagesSkillsForCodexAdapter(t *testing.T) {
-	root := t.TempDir()
-	pkg := buildTestPackage(t, "review-pack", "review")
-	codex, err := provider.Get("codex")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if err := Apply(root, codex, []packages.Package{pkg}); err != nil {
-		t.Fatalf("Apply() error = %v", err)
-	}
-
-	skillFile := filepath.Join(root, ".agents", "skills", "review-pack-review", "SKILL.md")
-	if _, err := os.Stat(skillFile); err != nil {
-		t.Fatalf("expected staged skill at %s: %v", skillFile, err)
-	}
-
-	contextData, err := os.ReadFile(filepath.Join(root, "AGENTS.md"))
-	if err != nil {
-		t.Fatalf("read AGENTS.md: %v", err)
-	}
-	content := string(contextData)
-	if !containsAll(content, beginMarker, endMarker, "review-pack@0.1.0") {
-		t.Fatalf("AGENTS.md missing expected content:\n%s", content)
-	}
 }
 
 func TestApplyKeepsProvidersIsolated(t *testing.T) {
