@@ -47,6 +47,8 @@ Packages are local files, but they are still untrusted input. Manifests are vali
 
 Capabilities declared in `lineage.yaml` are safety metadata, not enforcement. They are printed during validation, inspection, dry runs, and registry/package-page flows so receivers can see what a package says it wants before enabling it. They are not a sandbox in this build.
 
+See [docs/safety.md](safety.md) for the canonical, receiver-facing version of this model: every check mapped to its pipeline stage, secret-scanning and capability limits spelled out, and what's explicitly not implemented yet (PII detection, instruction-risk scanning).
+
 ## Decision Records
 
 Architecture decisions are tracked in the [decision log](decisions/README.md).
