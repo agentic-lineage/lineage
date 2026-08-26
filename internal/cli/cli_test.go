@@ -50,7 +50,7 @@ func TestEnableAndDryRunForEveryProvider(t *testing.T) {
 	cfg.Providers = map[string]config.Provider{}
 
 	for _, adapter := range provider.Known() {
-		cfg.Providers[ adapter.Name ] = config.Provider{
+		cfg.Providers[adapter.Name] = config.Provider{
 			Binary: "/bin/echo",
 		}
 	}
@@ -725,9 +725,9 @@ func TestDoctorReportsEachKnownProvider(t *testing.T) {
 	if err := Execute(nil, []string{"doctor"}, nil, &stdout, &stderr); err != nil {
 		t.Fatalf("doctor error = %v stderr=%s", err, stderr.String())
 	}
-	for _, name := range []string{"claude", "codex"} {
-		if !strings.Contains(stdout.String(), "provider "+name+":") {
-			t.Fatalf("doctor output = %q, want a line for provider %s", stdout.String(), name)
+	for _, adapter := range provider.Known() {
+		if !strings.Contains(stdout.String(), "provider "+adapter.Name+":") {
+			t.Fatalf("doctor output = %q, want a line for provider %s", stdout.String(), adapter.Name)
 		}
 	}
 }
