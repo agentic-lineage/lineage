@@ -227,7 +227,7 @@ lineage version
 ### Auggie setup and limitations
 
 Auggie is installed and authenticated separately on the receiving machine. It
-currently requires Node.js 22 or later:
+currently requires Node.js 20 or later:
 
 ```bash
 npm install -g @augmentcode/auggie
