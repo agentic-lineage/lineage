@@ -7,31 +7,31 @@ import (
 	"testing"
 )
 
-//	 This gives each future provider one obvious test addition and verifies all
+//	This gives each future provider one obvious test addition and verifies all
+//
 // three parts of its adapter.
 //
-//	 The test duplicates the registry data: this way, if someone accidentally
+//	The test duplicates the registry data: this way, if someone accidentally
+//
 // changes Auggie's path to .augment/rules, the test should fail and force them
 // to explain the contract change.
 func TestKnownProviders(t *testing.T) {
 	want := []Provider{
 		{
-			Name:         "claude",
-			SkillsDir:    filepath.Join(".claude", "skills"),
-			ContextFile:  "CLAUDE.md",
-			SkillsFormat: "copy",
+			Name:        "claude",
+			SkillsDir:   filepath.Join(".claude", "skills"),
+			ContextFile: "CLAUDE.md",
 		},
 		{
-			Name:         "codex",
-			SkillsDir:    filepath.Join(".agents", "skills"),
-			ContextFile:  "AGENTS.md",
-			SkillsFormat: "copy",
+			Name:        "codex",
+			SkillsDir:   filepath.Join(".agents", "skills"),
+			ContextFile: "AGENTS.md",
 		},
 		{
-			Name:         "auggie",
-			SkillsDir:    filepath.Join(".augment", "skills"),
-			ContextFile:  "AGENTS.md",
-			SkillsFormat: "auggie",
+			Name:        "auggie",
+			SkillsDir:   filepath.Join(".augment", "skills"),
+			ContextFile: "AGENTS.md",
+			renderer:    auggieSkillRenderer{},
 		},
 	}
 
