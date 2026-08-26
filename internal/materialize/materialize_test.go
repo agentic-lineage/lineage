@@ -8,6 +8,8 @@ import (
 
 	"github.com/agentic-lineage/lineage/internal/packages"
 	"github.com/agentic-lineage/lineage/internal/provider"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestNeedsApprovalOnFirstRun(t *testing.T) {
@@ -82,6 +84,138 @@ func TestApplyRejectsCollidingSkillDirNames(t *testing.T) {
 	}
 }
 
+func TestApplyRendersPlainSkillForAuggie(t *testing.T) {
+	root := t.TempDir()
+	pkg := buildTestPackage(t, "review-pack", "review")
+
+	auggie, err := provider.Get("auggie")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Apply(root, auggie, []packages.Package{pkg}); err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+
+	skillPath := filepath.Join(
+		root,
+		".augment",
+		"skills",
+		"review-pack-review",
+		"SKILL.md",
+	)
+
+	content, err := os.ReadFile(skillPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	metadata, body := parseSkillFrontmatter(t, string(content))
+
+	if metadata["name"] != "review-pack-review" {
+		t.Fatalf(
+			"frontmatter name = %#v, want %q", metadata["name"],
+			"review-pack-review",
+		)
+	}
+
+	description, ok := metadata["description"].(string)
+	if !ok || strings.TrimSpace(description) == "" {
+		t.Fatalf(
+			"frontmatter description = %#v, want a nonempty string",
+			metadata["description"],
+		)
+	}
+
+	if !strings.Contains(body, "# review") {
+		t.Fatalf("staged skill lost its original body:\n%s", body)
+	}
+}
+
+func parseSkillFrontmatter(
+	t *testing.T,
+	content string,
+) (map[string]any, string) {
+
+	t.Helper()
+
+	if !strings.HasPrefix(content, "---\n") {
+		t.Fatalf("skill has no frontmatter:\n%s", content)
+	}
+
+	remaining := strings.TrimPrefix(content, "---\n")
+	parts := strings.SplitN(remaining, "\n---\n", 2)
+
+	if len(parts) != 2 {
+		t.Fatalf("skill has invalid frontmatter delimiters:\n%s", content)
+	}
+
+	metadata := map[string]any{}
+	if err := yaml.Unmarshal([]byte(parts[0]), &metadata); err != nil {
+		t.Fatalf("skill has invalid YAML frontmatter: %v", err)
+	}
+
+	return metadata, parts[1]
+}
+
+func TestApplyUpdatesExistingFrontmatterForAuggie(t *testing.T) {
+	root := t.TempDir()
+	pkg := buildTestPackage(t, "review-pack", "review")
+
+	sourcePath := filepath.Join(
+		pkg.Path,
+		"skills",
+		"review",
+		"SKILL.md",
+	)
+
+	source := "---\nname: review\ndescription: Reviews proposed changes\n---\n\n# Review instructions"
+
+	if err := os.WriteFile(sourcePath, []byte(source), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	auggie, err := provider.Get("auggie")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Apply(root, auggie, []packages.Package{pkg}); err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+
+	stagedPath := filepath.Join(
+		root,
+		".augment",
+		"skills",
+		"review-pack-review",
+		"SKILL.md",
+	)
+
+	content, err := os.ReadFile(stagedPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	staged := string(content)
+
+	if strings.Count(staged, "---") != 2 {
+		t.Fatalf("staged skill should contain one frontmatter block:\n%s", staged)
+	}
+
+	if !strings.Contains(staged, "name: review-pack-review") {
+		t.Fatalf("staged skill has incorrect name:\n%s", staged)
+	}
+
+	if !strings.Contains(staged, "description: Reviews proposed changes") {
+		t.Fatalf("staged skill lost its description:\n%s", staged)
+	}
+
+	if !strings.Contains(staged, "# Review instructions") {
+		t.Fatalf("staged skill lost its body:\n%s", staged)
+	}
+}
+
 func TestApplyStagesSkillsAndWritesContextForEveryProvider(t *testing.T) {
 	pkg := buildTestPackage(t, "review-pack", "review")
 
@@ -124,7 +258,7 @@ func TestApplyStagesSkillsAndWritesContextForEveryProvider(t *testing.T) {
 			}
 
 			statePath := filepath.Join(
-				root, ".lineage", "materialized-" + adapter.Name + ".json",
+				root, ".lineage", "materialized-"+adapter.Name+".json",
 			)
 
 			stateData, err := os.ReadFile(statePath)

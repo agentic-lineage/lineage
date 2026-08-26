@@ -16,19 +16,22 @@ import (
 func TestKnownProviders(t *testing.T) {
 	want := []Provider{
 		{
-			Name:        "claude",
-			SkillsDir:   filepath.Join(".claude", "skills"),
-			ContextFile: "CLAUDE.md",
+			Name:         "claude",
+			SkillsDir:    filepath.Join(".claude", "skills"),
+			ContextFile:  "CLAUDE.md",
+			SkillsFormat: "copy",
 		},
 		{
-			Name:        "codex",
-			SkillsDir:   filepath.Join(".agents", "skills"),
-			ContextFile: "AGENTS.md",
+			Name:         "codex",
+			SkillsDir:    filepath.Join(".agents", "skills"),
+			ContextFile:  "AGENTS.md",
+			SkillsFormat: "copy",
 		},
 		{
-			Name:        "auggie",
-			SkillsDir:   filepath.Join(".augment", "skills"),
-			ContextFile: "AGENTS.md",
+			Name:         "auggie",
+			SkillsDir:    filepath.Join(".augment", "skills"),
+			ContextFile:  "AGENTS.md",
+			SkillsFormat: "auggie",
 		},
 	}
 
