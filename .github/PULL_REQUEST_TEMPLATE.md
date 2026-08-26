@@ -7,7 +7,7 @@ What changed, and why?
 Closes #
 
 - [ ] The linked issue is assigned to me.
-- [ ] This PR targets `develop`, or it is a release-tracked promotion into `master`.
+- [ ] This PR targets `develop`, or it is a release-tracked promotion into `main`.
 - [ ] This PR is not ready for review until the linked issue and test plan are complete.
 
 ## Package Impact
@@ -44,9 +44,9 @@ If this PR does not need automated tests, explain why:
 
 ## Release Tracking
 
-Complete this section only for PRs targeting `master`.
+Complete this section only for PRs targeting `main`.
 
-- [ ] Release-worthy master promotion
+- [ ] Release-worthy main promotion
 - [ ] Non-release housekeeping
 
 Planned version:
@@ -77,7 +77,7 @@ Safety and compatibility notes:
 
 Post-merge tag plan:
 
-- [ ] Create and push an annotated SemVer tag after merge to `master`.
+- [ ] Create and push an annotated SemVer tag after merge to `main`.
 
 Non-release housekeeping reason:
 
