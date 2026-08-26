@@ -6,11 +6,11 @@ Lineage's own release tags.
 
 ## Stable Branch
 
-`master` is the stable public baseline. A commit promoted to `master` should be
+`main` is the stable public baseline. A commit promoted to `main` should be
 something a user can install, run, and cite in a bug report.
 
 Development happens on `develop`. Feature and fix work should merge to
-`develop` first, then `develop` is promoted to `master` when the current stable
+`develop` first, then `develop` is promoted to `main` when the current stable
 goal is coherent enough to release.
 
 ## Version Scheme
@@ -38,7 +38,7 @@ package, inspect it, enable it, and run it through a local provider workflow.
 
 ## Tagging
 
-Every meaningful stable promotion to `master` should have an annotated tag:
+Every meaningful stable promotion to `main` should have an annotated tag:
 
 ```bash
 git tag -a v0.x.y -m "Lineage v0.x.y"
@@ -78,10 +78,10 @@ release scope.
 
 ## Required Checks
 
-Before promoting to `master` or tagging a release:
+Before promoting to `main` or tagging a release:
 
 - All release-scope issues are closed or explicitly deferred.
-- The PR from `develop` to `master` passes the `Go` test workflow and release
+- The PR from `develop` to `main` passes the `Go` test workflow and release
   tracking check.
 - The PR declares the planned SemVer tag, release classification, release notes,
   and post-merge annotated tag plan.
@@ -89,11 +89,11 @@ Before promoting to `master` or tagging a release:
   resolution, and no force pushes or branch deletion.
 - The release notes identify any skipped automated tests or manual validation.
 
-Release tags should point at commits that are already on `master`.
+Release tags should point at commits that are already on `main`.
 
 ## Non-Release Housekeeping
 
-A PR to `master` may skip release tagging only when it is explicitly marked as
+A PR to `main` may skip release tagging only when it is explicitly marked as
 non-release housekeeping and explains why no user-facing release is needed.
 Examples include release-doc typo fixes, workflow metadata cleanup, or
 administrative repository maintenance.

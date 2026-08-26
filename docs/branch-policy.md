@@ -2,7 +2,7 @@
 
 Lineage uses two protected long-lived branches:
 
-- `master`: stable branch.
+- `main`: stable branch.
 - `develop`: active development branch and default PR target.
 
 ## Required Flow
@@ -18,7 +18,7 @@ PRs without a linked assigned issue should not be reviewed except for maintainer
 
 ## Recommended GitHub Protection
 
-Apply these protections to both `master` and `develop`:
+Apply these protections to both `main` and `develop`:
 
 - Require a pull request before merging.
 - Require at least one approving review.
@@ -31,9 +31,9 @@ Apply these protections to both `master` and `develop`:
 - Restrict deletions.
 - Require conversation resolution before merging.
 
-The test workflow runs for pull requests targeting `develop` and pushes to `develop` or `master`.
+The test workflow runs for pull requests targeting `develop` and pushes to `develop` or `main`.
 
-Release tags should point at commits that are already on `master`. See
+Release tags should point at commits that are already on `main`. See
 [Release And Versioning Policy](release-versioning.md) for the tagging,
 release-note, and stable-promotion rules.
 

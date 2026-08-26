@@ -32,10 +32,10 @@ Repository skills in `.agents/skills` are Lineage guardrails, not generic engine
 
 ## Branch Policy
 
-- `master` is the stable branch.
+- `main` is the stable branch.
 - `develop` is the active development branch.
 - Feature and fix branches should target `develop`.
-- Changes reach `master` only after they have been reviewed and are ready for a stable release point.
+- Changes reach `main` only after they have been reviewed and are ready for a stable release point.
 - Protected branches should require tests to pass and owner approval before merge.
 
 ## Lean Planning
