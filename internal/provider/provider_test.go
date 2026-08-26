@@ -35,7 +35,7 @@ func TestResolveWithConfiguredBinaryForEveryProvider(t *testing.T) {
 				Providers: map[string]config.Provider{
 					adapter.Name: {
 						Binary: binary,
-						Args: []string{"configured-arg"},
+						Args:   []string{"configured-arg"},
 					},
 				},
 			}
@@ -61,7 +61,7 @@ func TestResolveWithConfiguredBinaryForEveryProvider(t *testing.T) {
 				t.Errorf("Args = %#v, want %#v", plan.Args, wantArgs)
 			}
 
-			if !containsString(plan.Env,"LINEAGE_PROVIDER="+adapter.Name) {
+			if !containsString(plan.Env, "LINEAGE_PROVIDER="+adapter.Name) {
 				t.Errorf("Env does not contain LINEAGE_PROVIDER=%s", adapter.Name)
 			}
 
