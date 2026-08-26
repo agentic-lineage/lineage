@@ -18,6 +18,8 @@ import (
 	"github.com/agentic-lineage/lineage/internal/atomicfile"
 	"github.com/agentic-lineage/lineage/internal/packages"
 	"github.com/agentic-lineage/lineage/internal/provider"
+
+	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -124,6 +126,16 @@ func apply(projectRoot string, adapter provider.Provider, pkgs []packages.Packag
 		if err := copyDir(src, dest); err != nil {
 			return fmt.Errorf("stage skill into %s: %w", rel, err)
 		}
+
+		if adapter.SkillsFormat == "auggie" {
+			skillPath := filepath.Join(dest, "SKILL.md")
+			stagedName := filepath.Base(dest)
+
+			if err := renderAuggieSkill(skillPath, stagedName); err != nil {
+				return fmt.Errorf("render Auggie skill %s: %w", rel, err)
+			}
+		}
+
 		written = append(written, rel)
 	}
 	sort.Strings(written)
@@ -133,6 +145,51 @@ func apply(projectRoot string, adapter provider.Provider, pkgs []packages.Packag
 	}
 
 	return saveState(projectRoot, adapter.Name, state{Schema: currentStateSchema, SkillDirs: written})
+}
+
+func renderAuggieSkill(path, name string) error {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+
+	body := string(content)
+	metadata := map[string]any{}
+
+	if strings.HasPrefix(body, "---\n") {
+		remaining := strings.TrimPrefix(body, "---\n")
+		parts := strings.SplitN(remaining, "\n---\n", 2)
+		if len(parts) != 2 {
+			return fmt.Errorf("invalid YAML frontmatter")
+		}
+
+		if err := yaml.Unmarshal([]byte(parts[0]), &metadata); err != nil {
+			return fmt.Errorf("parse YAML frontmatter: %w", err)
+		}
+
+		body = strings.TrimPrefix(parts[1], "\n")
+	}
+
+	// Auggie wants the name to match the staged directory
+	metadata["name"] = name
+
+	description, ok := metadata["description"].(string)
+	if !ok || strings.TrimSpace(description) == "" {
+		metadata["description"] = "Lineage skill " + name
+	}
+
+	frontmatter, err := yaml.Marshal(metadata)
+	if err != nil {
+		return fmt.Errorf("render YAML frontmatter: %w", err)
+	}
+
+	rendered := fmt.Sprintf(
+		"---\n%s---\n\n%s",
+		frontmatter,
+		body,
+	)
+
+	return atomicfile.WriteFile(path, []byte(rendered), 0o644)
 }
 
 // NeedsApproval reports whether calling Apply with pkgs would change
