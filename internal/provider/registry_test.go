@@ -31,7 +31,7 @@ func TestGetAiderProvider(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.SkillsDir != filepath.Join(".aider", "skills") || p.ContextFile != "CONVENTIONS.md" || p.ConfigFile != ".aider.conf.yml" || p.ConfigReadPath != "CONVENTIONS.md" {
+	if p.SkillsDir != filepath.Join(".aider", "skills") || p.ContextFile != "CONVENTIONS.md" || p.Config == nil {
 		t.Fatalf("Get(aider) = %#v, want Aider conventions and config paths", p)
 	}
 }

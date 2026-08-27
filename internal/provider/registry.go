@@ -14,17 +14,34 @@ import (
 // internal/packages, internal/cli) should ever special-case a provider
 // name. Providers sit on top of the provider-neutral core, not inside it.
 type Provider struct {
-	Name           string
-	SkillsDir      string
-	ContextFile    string
-	ConfigFile     string
-	ConfigReadPath string
+	Name        string
+	SkillsDir   string
+	ContextFile string
+	Config      ConfigAdapter
+}
+
+// ConfigState records a provider-specific project configuration edit so the
+// materializer can reverse only the content it added. Adapters own the file
+// syntax; the core only persists and passes this state through.
+type ConfigState struct {
+	FileExisted bool     `json:"file_existed"`
+	CreatedFile bool     `json:"created_file"`
+	Original    []string `json:"original,omitempty"`
+	Managed     []string `json:"managed,omitempty"`
+}
+
+// ConfigAdapter describes optional project-scoped configuration that connects
+// a provider's generated context file to its native configuration.
+type ConfigAdapter interface {
+	Ensure(projectRoot string) (ConfigState, error)
+	Remove(projectRoot string, state ConfigState) error
+	NeedsApproval(projectRoot string, state ConfigState, desired bool) (bool, error)
 }
 
 var registry = []Provider{
 	{Name: "claude", SkillsDir: filepath.Join(".claude", "skills"), ContextFile: "CLAUDE.md"},
 	{Name: "codex", SkillsDir: filepath.Join(".agents", "skills"), ContextFile: "AGENTS.md"},
-	{Name: "aider", SkillsDir: filepath.Join(".aider", "skills"), ContextFile: "CONVENTIONS.md", ConfigFile: ".aider.conf.yml", ConfigReadPath: "CONVENTIONS.md"},
+	{Name: "aider", SkillsDir: filepath.Join(".aider", "skills"), ContextFile: "CONVENTIONS.md", Config: AiderConfigAdapter{}},
 }
 
 // Known returns every registered provider, in registration order.
