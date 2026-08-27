@@ -13,11 +13,13 @@ import (
 	"github.com/agentic-lineage/lineage/internal/atomicfile"
 	"github.com/agentic-lineage/lineage/internal/auth"
 	"github.com/agentic-lineage/lineage/internal/config"
+	"github.com/agentic-lineage/lineage/internal/graph"
 	"github.com/agentic-lineage/lineage/internal/materialize"
 	"github.com/agentic-lineage/lineage/internal/packages"
 	"github.com/agentic-lineage/lineage/internal/provider"
 	"github.com/agentic-lineage/lineage/internal/runtime"
 	"github.com/agentic-lineage/lineage/internal/shim"
+	"github.com/agentic-lineage/lineage/internal/snapshot"
 )
 
 // Version is set at build time via
@@ -77,6 +79,8 @@ func Execute(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 		return runDisable(args[1:], home, in, stdout, stderr)
 	case "inspect":
 		return runInspect(args[1:], home, stdout, stderr)
+	case "graph":
+		return runGraph(args[1:], stdout, stderr)
 	case "run":
 		return runProvider(ctx, args[1:], home, in, stdout, stderr)
 	case "workflow":
@@ -123,6 +127,10 @@ func runInit(args []string, home string, stdout, stderr io.Writer) error {
 	case "workspace":
 		if len(args) != 2 {
 			err := fmt.Errorf("usage: lineage init workspace <name>")
+			fmt.Fprintln(stderr, err)
+			return err
+		}
+		if err := config.ValidateWorkspaceName(args[1]); err != nil {
 			fmt.Fprintln(stderr, err)
 			return err
 		}
@@ -385,13 +393,21 @@ func runPackageExport(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 
+	report, err := packages.Validate(dir)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+	portability := packages.NewPortabilityReport(report)
+	packages.WritePortabilityReport(stdout, portability)
+	if portability.HasBlockers() {
+		err := fmt.Errorf("package has unresolved portability blockers, refusing to export (%d blocker(s)); run `lineage package validate` for details", len(portability.Blockers))
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+
 	if outPath == "" {
-		manifest, err := packages.LoadManifest(dir)
-		if err != nil {
-			fmt.Fprintln(stderr, err)
-			return err
-		}
-		outPath = fmt.Sprintf("%s-%s.tgz", manifest.Name, manifest.Version)
+		outPath = fmt.Sprintf("%s-%s.tgz", report.Manifest.Name, report.Manifest.Version)
 	}
 
 	f, err := atomicfile.Create(outPath, 0o644)
@@ -449,6 +465,7 @@ func runPackageValidate(dir string, yamlOutput bool, stdout, stderr io.Writer) e
 	fmt.Fprintf(stdout, "capabilities:\n")
 	fmt.Fprintf(stdout, "  filesystem.read: %s\n", listValue(report.Manifest.Capabilities.Filesystem.Read))
 	fmt.Fprintf(stdout, "  network: %s\n", listValue(report.Manifest.Capabilities.Network))
+	packages.WritePortabilityReport(stdout, packages.NewPortabilityReport(report))
 
 	if len(report.Notes) > 0 {
 		fmt.Fprintf(stdout, "notes:\n")
@@ -652,11 +669,58 @@ func enableRef(ref, home string, autoApprove bool, stdin *bufio.Reader, stdout, 
 		fmt.Fprintln(stdout, "setup complete.")
 	}
 
+	// Everything from here on must succeed before config is saved: once
+	// SaveProjectConfig runs, the package is durably marked enabled, so any
+	// step that can still fail (digest computation, the snapshot, the graph
+	// append) has to happen first. Otherwise a failure here - e.g. a
+	// corrupt .lineage/graph.json from an earlier partial write - would
+	// report enable as failed while having already left the package
+	// enabled in config, with no way back short of manually editing the
+	// file.
+
+	// Record that this project's local environment now descends from
+	// manifest, so `lineage graph list` can later explain where it came
+	// from (#6). Digest is recomputed here (ComputeDigest, the same
+	// identity Pull/Import verify against) rather than reusing a value
+	// from earlier resolution, since enableRef never needed it until now.
+	digest, err := packages.ComputeDigest(resolvedPath)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return false, err
+	}
+
+	// Also take a durable, content-addressed snapshot of exactly what was
+	// enabled (#7), so the graph record below can point at something that
+	// can later be inspected, copied, or reconstructed byte-for-byte
+	// instead of only naming a version.
+	_, snapshotID, err := snapshot.Create(home, resolvedPath)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return false, err
+	}
+
+	if _, err := graph.Append(projectRoot, graph.Record{
+		Event: "enable",
+		Parent: graph.ParentRef{
+			Name:       manifest.Name,
+			Version:    manifest.Version,
+			Digest:     digest,
+			SnapshotID: string(snapshotID),
+		},
+		Descendant: graph.DescendantRef{
+			Workspace: cfg.Workspace,
+		},
+	}); err != nil {
+		fmt.Fprintln(stderr, err)
+		return false, err
+	}
+
 	cfg.EnabledPackages = newEnabled
 	if err := config.SaveProjectConfig(configPath, cfg); err != nil {
 		fmt.Fprintln(stderr, err)
 		return false, err
 	}
+
 	fmt.Fprintf(stdout, "enabled package %s in %s\n", storedRef, configPath)
 	return true, nil
 }
@@ -1335,6 +1399,7 @@ Using a package:
   disable <path-or-id>                    remove a package from this project
   list                                    show enabled packages
   inspect <path-or-id> [--yaml]            show a package's contents
+  graph list [--yaml]                      show what this project's state descends from
   run <%s> [--dry-run] [--yes]  launch a provider with packages applied
   workflow run <name> <%s>      run one declared workflow
 

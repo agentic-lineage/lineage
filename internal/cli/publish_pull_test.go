@@ -85,6 +85,30 @@ func TestPackagePublishSucceeds(t *testing.T) {
 	}
 }
 
+func TestPackagePublishRefusesPortabilityBlockers(t *testing.T) {
+	root := t.TempDir()
+	pkgDir := filepath.Join(root, "blocked-publish")
+	if err := packages.InitPackage(pkgDir, "blocked-publish"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pkgDir, ".env"), []byte("API_KEY=whatever"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv(config.HomeEnv, filepath.Join(root, "home"))
+	t.Setenv("LINEAGE_PUBLISH_TOKEN", "test-token")
+	t.Setenv("LINEAGE_REGISTRY_URL", "http://unused.invalid")
+
+	var stdout, stderr bytes.Buffer
+	err := Execute(nil, []string{"package", "publish", pkgDir}, nil, &stdout, &stderr)
+	if err == nil {
+		t.Fatal("publish error = nil, want portability blocker error")
+	}
+	if !strings.Contains(stderr.String(), "unresolved portability blockers") {
+		t.Fatalf("stderr = %q, want portability blocker message", stderr.String())
+	}
+}
+
 func TestPackagePullUsage(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	// Same top-level gate as TestPackagePublishUsage: a malformed --as flag

@@ -263,3 +263,36 @@ func TestParseRunArgs(t *testing.T) {
 		})
 	}
 }
+
+// TestInitWorkspaceRejectsTraversingName covers #171: `lineage init
+// workspace ../../escaped` created `.../escaped/packages` outside the
+// intended workspaces/ directory, because the name went straight into
+// filepath.Join unvalidated.
+func TestInitWorkspaceRejectsTraversingName(t *testing.T) {
+	tmp := t.TempDir()
+	home := filepath.Join(tmp, "home", "lineage")
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(config.HomeEnv, home)
+
+	var stdout, stderr bytes.Buffer
+	if err := Execute(nil, []string{"init", "workspace", filepath.Join("..", "..", "escaped")}, nil, &stdout, &stderr); err == nil {
+		t.Fatal("init workspace with a traversing name: error = nil, want a rejection")
+	}
+
+	escaped := filepath.Join(tmp, "escaped")
+	if _, err := os.Stat(escaped); err == nil {
+		t.Fatalf("a workspace directory was created at %s, outside %s", escaped, config.WorkspacesDir(home))
+	}
+
+	// A well-formed name still works.
+	stdout.Reset()
+	stderr.Reset()
+	if err := Execute(nil, []string{"init", "workspace", "team-a"}, nil, &stdout, &stderr); err != nil {
+		t.Fatalf("init workspace team-a error = %v stderr=%s", err, stderr.String())
+	}
+	if _, err := os.Stat(config.WorkspacePackagesDir(home, "team-a")); err != nil {
+		t.Fatalf("stat workspace packages dir: %v", err)
+	}
+}

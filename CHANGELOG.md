@@ -173,3 +173,12 @@ All notable changes to Lineage will be documented here.
   errored on, by simply retrying the same publish call. CLI-side error
   messages from a failed publish/pull now surface the registry's own
   error text instead of a raw JSON body.
+- `lineage enable` now records a local lineage graph entry
+  (`.lineage/graph.json`) noting which package a project's state
+  descends from; `lineage graph list [--yaml]` shows the recorded
+  history for the current project.
+- Added a content-addressed, immutable snapshot store
+  (`~/.lineage/objects/`, `~/.lineage/snapshots/`): `lineage enable` now
+  also takes a durable snapshot of exactly what was enabled, and links
+  it to the graph entry above via `snapshot_id`. Identical file content
+  is stored once regardless of how many packages/versions reference it.
