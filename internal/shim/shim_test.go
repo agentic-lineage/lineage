@@ -6,6 +6,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/agentic-lineage/lineage/internal/provider"
 )
 
 func TestFileNamePOSIXHasNoExtension(t *testing.T) {
@@ -29,10 +31,10 @@ func TestInstallWritesShimForEveryKnownProvider(t *testing.T) {
 		t.Fatalf("Install() error = %v", err)
 	}
 
-	for _, name := range []string{"claude", "codex"} {
-		path := filepath.Join(home, "bin", FileName(name, runtime.GOOS))
+	for _, p := range provider.Known() {
+		path := filepath.Join(home, "bin", FileName(p.Name, runtime.GOOS))
 		if _, err := os.Stat(path); err != nil {
-			t.Fatalf("expected shim for %s at %s: %v", name, path, err)
+			t.Fatalf("expected shim for %s at %s: %v", p.Name, path, err)
 		}
 	}
 }

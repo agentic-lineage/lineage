@@ -22,6 +22,7 @@ type Provider struct {
 var registry = []Provider{
 	{Name: "claude", SkillsDir: filepath.Join(".claude", "skills"), ContextFile: "CLAUDE.md"},
 	{Name: "codex", SkillsDir: filepath.Join(".agents", "skills"), ContextFile: "AGENTS.md"},
+	{Name: "windsurf", SkillsDir: filepath.Join(".windsurf", "rules"), ContextFile: ".windsurfrules"},
 }
 
 // Known returns every registered provider, in registration order.

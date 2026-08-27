@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -22,6 +23,16 @@ func TestGetKnownProvider(t *testing.T) {
 	}
 	if p.SkillsDir == "" || p.ContextFile != "AGENTS.md" {
 		t.Fatalf("Get(codex) = %#v", p)
+	}
+}
+
+func TestGetWindsurfProvider(t *testing.T) {
+	p, err := Get("windsurf")
+	if err != nil {
+		t.Fatalf("Get(windsurf) error = %v", err)
+	}
+	if p.SkillsDir != filepath.Join(".windsurf", "rules") || p.ContextFile != ".windsurfrules" {
+		t.Fatalf("Get(windsurf) = %#v, want project-scoped Windsurf paths", p)
 	}
 }
 

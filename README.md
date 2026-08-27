@@ -187,9 +187,9 @@ what it would materialize before writing.
 - `lineage workflow run <workflow-name> <claude|codex> --dry-run` narrows the
   launch plan to one exported workflow.
 
-The current adapters focus on Claude and Codex. The package shape stays plain so
-future adapters can use the same manifest, skills, workflows, agents, policies,
-references, and setup material.
+The current adapters focus on Claude, Codex, and Windsurf. The package shape
+stays plain so future adapters can use the same manifest, skills, workflows,
+agents, policies, references, and setup material.
 
 Project configuration lives at `.lineage/config.yaml`.
 
@@ -203,6 +203,8 @@ providers:
     binary: /path/to/real/claude
   codex:
     binary: /path/to/real/codex
+  windsurf:
+    binary: /path/to/real/windsurf
 ```
 
 The first time `lineage run` would stage files for a provider, it shows what it
@@ -233,13 +235,19 @@ lineage list
 lineage inspect <package-path-or-id>
 lineage run claude --dry-run
 lineage run codex --dry-run
-lineage workflow run <workflow-name> <claude|codex> [--dry-run] [--yes]
+lineage run windsurf --dry-run
+lineage workflow run <workflow-name> <claude|codex|windsurf> [--dry-run] [--yes]
 
 lineage install-shims
 lineage doctor
 lineage version
 ```
 
+Windsurf support is project-scoped and config/materialization-only. Lineage
+stages skills under `.windsurf/rules/` and writes its generated context to the
+legacy-compatible project-local `.windsurfrules` file. It does not launch the
+Windsurf GUI or write Windsurf's global MCP configuration. Use
+`lineage run windsurf --dry-run` to inspect the plan before applying it.
 Useful day-to-day checks:
 
 ```bash

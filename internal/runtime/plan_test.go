@@ -58,6 +58,27 @@ func TestBuildPlanUnknownProvider(t *testing.T) {
 	}
 }
 
+func TestBuildPlanWindsurfDryRun(t *testing.T) {
+	project := t.TempDir()
+	home := t.TempDir()
+	cfg := config.ProjectConfig{
+		Providers: map[string]config.Provider{
+			"windsurf": {Binary: "/bin/echo"},
+		},
+	}
+	if err := config.SaveProjectConfig(config.ProjectConfigPath(project), cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	plan, err := BuildPlan("windsurf", project, home, nil)
+	if err != nil {
+		t.Fatalf("BuildPlan(windsurf) error = %v", err)
+	}
+	if !strings.Contains(plan.DryRunString(), "provider: windsurf") {
+		t.Fatalf("DryRunString() = %q, want Windsurf provider", plan.DryRunString())
+	}
+}
+
 func mustWrite(t *testing.T, path string, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
