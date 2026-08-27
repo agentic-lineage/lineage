@@ -58,6 +58,27 @@ func TestBuildPlanUnknownProvider(t *testing.T) {
 	}
 }
 
+func TestBuildPlanClineDryRun(t *testing.T) {
+	project := t.TempDir()
+	home := t.TempDir()
+	cfg := config.ProjectConfig{
+		Providers: map[string]config.Provider{
+			"cline": {Binary: "/bin/echo"},
+		},
+	}
+	if err := config.SaveProjectConfig(config.ProjectConfigPath(project), cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	plan, err := BuildPlan("cline", project, home, nil)
+	if err != nil {
+		t.Fatalf("BuildPlan(cline) error = %v", err)
+	}
+	if !strings.Contains(plan.DryRunString(), "provider: cline") {
+		t.Fatalf("DryRunString() = %q, want Cline provider", plan.DryRunString())
+	}
+}
+
 func mustWrite(t *testing.T, path string, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

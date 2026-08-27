@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -22,6 +23,16 @@ func TestGetKnownProvider(t *testing.T) {
 	}
 	if p.SkillsDir == "" || p.ContextFile != "AGENTS.md" {
 		t.Fatalf("Get(codex) = %#v", p)
+	}
+}
+
+func TestGetClineProvider(t *testing.T) {
+	p, err := Get("cline")
+	if err != nil {
+		t.Fatalf("Get(cline) error = %v", err)
+	}
+	if p.SkillsDir != ".clinerules" || p.ContextFile != filepath.Join(".clinerules", "lineage.md") {
+		t.Fatalf("Get(cline) = %#v, want project-scoped Cline paths", p)
 	}
 }
 

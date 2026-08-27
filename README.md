@@ -184,10 +184,11 @@ what it would materialize before writing.
 
 - `lineage run claude --dry-run` previews Claude materialization.
 - `lineage run codex --dry-run` previews Codex materialization.
-- `lineage workflow run <workflow-name> <claude|codex> --dry-run` narrows the
+- `lineage run cline --dry-run` previews Cline materialization.
+- `lineage workflow run <workflow-name> <claude|codex|cline> --dry-run` narrows the
   launch plan to one exported workflow.
 
-The current adapters focus on Claude and Codex. The package shape stays plain so
+The current adapters focus on Claude, Codex, and Cline. The package shape stays plain so
 future adapters can use the same manifest, skills, workflows, agents, policies,
 references, and setup material.
 
@@ -203,6 +204,8 @@ providers:
     binary: /path/to/real/claude
   codex:
     binary: /path/to/real/codex
+  cline:
+    binary: /path/to/real/cline
 ```
 
 The first time `lineage run` would stage files for a provider, it shows what it
@@ -233,7 +236,8 @@ lineage list
 lineage inspect <package-path-or-id>
 lineage run claude --dry-run
 lineage run codex --dry-run
-lineage workflow run <workflow-name> <claude|codex> [--dry-run] [--yes]
+lineage run cline --dry-run
+lineage workflow run <workflow-name> <claude|codex|cline> [--dry-run] [--yes]
 
 lineage install-shims
 lineage doctor
