@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -22,6 +23,16 @@ func TestGetKnownProvider(t *testing.T) {
 	}
 	if p.SkillsDir == "" || p.ContextFile != "AGENTS.md" {
 		t.Fatalf("Get(codex) = %#v", p)
+	}
+}
+
+func TestGetAiderProvider(t *testing.T) {
+	p, err := Get("aider")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.SkillsDir != filepath.Join(".aider", "skills") || p.ContextFile != "CONVENTIONS.md" || p.ConfigFile != ".aider.conf.yml" || p.ConfigReadPath != "CONVENTIONS.md" {
+		t.Fatalf("Get(aider) = %#v, want Aider conventions and config paths", p)
 	}
 }
 

@@ -171,6 +171,40 @@ func TestApplyStagesSkillsForCodexAdapter(t *testing.T) {
 	}
 }
 
+func TestApplyStagesSkillsAndConfigForAiderAdapter(t *testing.T) {
+	root := t.TempDir()
+	pkg := buildTestPackage(t, "review-pack", "review")
+	aider, err := provider.Get("aider")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Apply(root, aider, []packages.Package{pkg}); err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+
+	skillFile := filepath.Join(root, ".aider", "skills", "review-pack-review", "SKILL.md")
+	if _, err := os.Stat(skillFile); err != nil {
+		t.Fatalf("expected staged skill at %s: %v", skillFile, err)
+	}
+
+	conventions, err := os.ReadFile(filepath.Join(root, "CONVENTIONS.md"))
+	if err != nil {
+		t.Fatalf("read Aider conventions: %v", err)
+	}
+	if !containsAll(string(conventions), beginMarker, endMarker, "review-pack@0.1.0") {
+		t.Fatalf("Aider conventions missing expected content:\n%s", conventions)
+	}
+
+	configData, err := os.ReadFile(filepath.Join(root, ".aider.conf.yml"))
+	if err != nil {
+		t.Fatalf("read Aider config: %v", err)
+	}
+	if !strings.Contains(string(configData), "read:") || !strings.Contains(string(configData), "CONVENTIONS.md") {
+		t.Fatalf("Aider config missing conventions read entry:\n%s", configData)
+	}
+}
+
 func TestApplyKeepsProvidersIsolated(t *testing.T) {
 	root := t.TempDir()
 	pkg := buildTestPackage(t, "review-pack", "review")

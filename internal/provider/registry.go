@@ -14,14 +14,17 @@ import (
 // internal/packages, internal/cli) should ever special-case a provider
 // name. Providers sit on top of the provider-neutral core, not inside it.
 type Provider struct {
-	Name        string
-	SkillsDir   string
-	ContextFile string
+	Name           string
+	SkillsDir      string
+	ContextFile    string
+	ConfigFile     string
+	ConfigReadPath string
 }
 
 var registry = []Provider{
 	{Name: "claude", SkillsDir: filepath.Join(".claude", "skills"), ContextFile: "CLAUDE.md"},
 	{Name: "codex", SkillsDir: filepath.Join(".agents", "skills"), ContextFile: "AGENTS.md"},
+	{Name: "aider", SkillsDir: filepath.Join(".aider", "skills"), ContextFile: "CONVENTIONS.md", ConfigFile: ".aider.conf.yml", ConfigReadPath: "CONVENTIONS.md"},
 }
 
 // Known returns every registered provider, in registration order.

@@ -18,6 +18,7 @@ import (
 	"github.com/agentic-lineage/lineage/internal/atomicfile"
 	"github.com/agentic-lineage/lineage/internal/packages"
 	"github.com/agentic-lineage/lineage/internal/provider"
+	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -131,8 +132,62 @@ func apply(projectRoot string, adapter provider.Provider, pkgs []packages.Packag
 	if err := writeSummary(filepath.Join(projectRoot, adapter.ContextFile), pkgs, wf); err != nil {
 		return fmt.Errorf("update %s: %w", adapter.ContextFile, err)
 	}
+	if err := ensureConfigRead(projectRoot, adapter); err != nil {
+		return err
+	}
 
 	return saveState(projectRoot, adapter.Name, state{Schema: currentStateSchema, SkillDirs: written})
+}
+
+// ensureConfigRead keeps a provider's generated context file connected to its
+// native project configuration. Providers without a config read entry use the
+// ordinary context-file path only. The provider declares these paths so the
+// materialization core remains provider-neutral.
+func ensureConfigRead(projectRoot string, adapter provider.Provider) error {
+	if adapter.ConfigFile == "" || adapter.ConfigReadPath == "" {
+		return nil
+	}
+
+	path := filepath.Join(projectRoot, adapter.ConfigFile)
+	config := map[string]any{}
+	data, err := os.ReadFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("read %s: %w", adapter.ConfigFile, err)
+	}
+	if err == nil && len(strings.TrimSpace(string(data))) > 0 {
+		if err := yaml.Unmarshal(data, &config); err != nil {
+			return fmt.Errorf("parse %s: %w", adapter.ConfigFile, err)
+		}
+	}
+
+	readValue, ok := config["read"]
+	if !ok {
+		config["read"] = []string{adapter.ConfigReadPath}
+	} else {
+		read, ok := readValue.([]any)
+		if !ok {
+			return fmt.Errorf("%s read setting must be a list", adapter.ConfigFile)
+		}
+		found := false
+		for _, value := range read {
+			if value == adapter.ConfigReadPath {
+				found = true
+				break
+			}
+		}
+		if !found {
+			config["read"] = append(read, adapter.ConfigReadPath)
+		}
+	}
+
+	updated, err := yaml.Marshal(config)
+	if err != nil {
+		return fmt.Errorf("encode %s: %w", adapter.ConfigFile, err)
+	}
+	if err := atomicfile.WriteFile(path, updated, 0o644); err != nil {
+		return fmt.Errorf("update %s: %w", adapter.ConfigFile, err)
+	}
+	return nil
 }
 
 // NeedsApproval reports whether calling Apply with pkgs would change
