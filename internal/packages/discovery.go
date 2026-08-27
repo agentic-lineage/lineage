@@ -166,6 +166,14 @@ func contentFiles(dir string) ([]string, error) {
 	return files, nil
 }
 
+// ContentFiles is the exported form of contentFiles, for callers outside
+// this package (e.g. internal/snapshot) that need the same deterministic
+// content-file listing digest computation and export already agree on,
+// without duplicating the walk/symlink-rejection logic.
+func ContentFiles(dir string) ([]string, error) {
+	return contentFiles(dir)
+}
+
 // ComputeDigest returns a stable "sha256:<hex>" content digest over a
 // package's manifest and every file in its standard content directories,
 // hashed in deterministic path order. Two packages with byte-identical

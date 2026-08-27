@@ -162,6 +162,53 @@ func TestPackageValidateFailsAndReportsErrors(t *testing.T) {
 	}
 }
 
+func TestPackageExportPrintsPortabilityReport(t *testing.T) {
+	root := t.TempDir()
+	pkgDir := filepath.Join(root, "export-report")
+	outPath := filepath.Join(root, "export-report.tgz")
+	if err := packages.InitPackage(pkgDir, "export-report"); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if err := Execute(nil, []string{"package", "export", pkgDir, "-o", outPath}, nil, &stdout, &stderr); err != nil {
+		t.Fatalf("export error = %v stderr=%s", err, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "portability:\n  status: PASS") {
+		t.Fatalf("stdout = %q, want portability PASS report", stdout.String())
+	}
+	if _, err := os.Stat(outPath); err != nil {
+		t.Fatalf("expected export archive: %v", err)
+	}
+}
+
+func TestPackageExportRefusesPortabilityBlockersBeforeWritingArchive(t *testing.T) {
+	root := t.TempDir()
+	pkgDir := filepath.Join(root, "blocked-export-report")
+	outPath := filepath.Join(root, "blocked-export-report.tgz")
+	if err := packages.InitPackage(pkgDir, "blocked-export-report"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pkgDir, ".env"), []byte("API_KEY=whatever"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	err := Execute(nil, []string{"package", "export", pkgDir, "-o", outPath}, nil, &stdout, &stderr)
+	if err == nil {
+		t.Fatal("export error = nil, want portability blocker error")
+	}
+	if !strings.Contains(stdout.String(), "portability:\n  status: BLOCKED") {
+		t.Fatalf("stdout = %q, want portability BLOCKED report", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "unresolved portability blockers") {
+		t.Fatalf("stderr = %q, want portability blocker message", stderr.String())
+	}
+	if _, statErr := os.Stat(outPath); !os.IsNotExist(statErr) {
+		t.Fatalf("archive stat error = %v, want no archive written", statErr)
+	}
+}
+
 func TestRunUnknownProviderListsKnownProviders(t *testing.T) {
 	home := t.TempDir()
 	project := t.TempDir()

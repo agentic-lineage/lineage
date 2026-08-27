@@ -1,8 +1,13 @@
 # Lineage
 
-Lineage is a local distribution layer for agent environments.
+Lineage is an open-source local distribution layer for packaging and sharing AI
+agent workflows across Claude Code, Codex, and other coding agents.
 
-It lets a prepared agent package travel as one environment: skills, workflows, agents, policies, references, setup material, and provider entrypoints can be bundled together, inspected, enabled, and launched from a receiver's machine.
+It lets a prepared agent package travel as one environment: skills, workflows,
+agents, policies, references, setup material, and provider entrypoints can be
+bundled together, inspected, enabled, and launched from a receiver's machine.
+The package stays local and readable; the receiver keeps using their own agent
+tools.
 
 The goal is simple:
 
@@ -10,7 +15,27 @@ The goal is simple:
 prepare once -> package safely -> share -> enable locally -> run with the user's own agent tools
 ```
 
-Lineage does not try to replace the agent provider. It sits around local agent commands and makes the surrounding environment easier to package, review, and reproduce.
+Lineage does not try to replace the agent provider. It sits around local agent
+commands and makes the surrounding environment easier to package, review, and
+reproduce.
+
+## What Lineage Is For
+
+Use Lineage when a workflow is more than a prompt and you want to share the
+working environment around it:
+
+- Package Claude Code workflows, Codex workflows, agent skills, policies,
+  references, and setup material together.
+- Publish a reusable agent workflow to the Lineage registry or share it as a
+  deterministic `.tgz` archive.
+- Let receivers inspect the package contents and declared capabilities before
+  enabling anything locally.
+- Run the same packaged behavior through provider adapters instead of rebuilding
+  it by hand for each project.
+
+If you are looking for "how to share Claude workflows", "how to package AI
+agent skills", or "how to distribute reusable agent workflows", Lineage is the
+small local runtime and package format for that job.
 
 ## Install
 
@@ -42,6 +67,21 @@ package/
 ```
 
 These folders are intentionally plain. A receiver should be able to open the package and see what it contains before enabling it.
+
+## How Lineage Fits Claude, Codex, and Other Agents
+
+Lineage is provider-adjacent, not provider-owned. It prepares the local files a
+provider already knows how to read, keeps provider-specific behavior behind
+adapter boundaries, and can preview what it would materialize before writing.
+
+- `lineage run claude --dry-run` previews Claude materialization.
+- `lineage run codex --dry-run` previews Codex materialization.
+- `lineage workflow run <workflow-name> <claude|codex> --dry-run` narrows the
+  launch plan to one exported workflow.
+
+The current adapters focus on Claude and Codex. The package shape is deliberately
+plain so future adapters can use the same manifest, skills, workflows, agents,
+policies, references, and setup material.
 
 ## Current Commands
 
@@ -171,6 +211,13 @@ lineage doctor
 lineage workflow run resume-review claude --dry-run
 ```
 
+## Guides
+
+- [What is a Lineage package?](docs/guides/lineage-package.md)
+- [How to share Claude Code and Codex workflows](docs/guides/share-agent-workflows.md)
+- [Architecture and trust model](docs/architecture.md)
+- [Public docs and discoverability checklist](docs/discoverability.md)
+
 ## Safety Principles
 
 - Packages should be inspectable before they are enabled.
@@ -196,6 +243,8 @@ The source follows the standard Go layout:
 Important project decisions are recorded in [docs/decisions](docs/decisions/README.md).
 Release and stable-branch rules are documented in
 [docs/release-versioning.md](docs/release-versioning.md).
+GitHub and website discoverability checks live in
+[docs/discoverability.md](docs/discoverability.md).
 When behavior affects install, publishing, receiver activation, setup prompts,
 or safety wording, also check [docs/public-docs-sync.md](docs/public-docs-sync.md)
 so the website, Wiki, package pages, and Discussions do not drift.

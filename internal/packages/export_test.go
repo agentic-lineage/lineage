@@ -42,6 +42,23 @@ func TestExportRefusesWhenValidationFails(t *testing.T) {
 	}
 }
 
+func TestExportRefusesPortabilityBlockers(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "blocked-export")
+	if err := InitPackage(root, "blocked-export"); err != nil {
+		t.Fatal(err)
+	}
+	mustWrite(t, filepath.Join(root, ".env"), "API_KEY=whatever")
+
+	var buf bytes.Buffer
+	err := Export(root, &buf)
+	if err == nil {
+		t.Fatal("Export() error = nil, want error for unresolved portability blockers")
+	}
+	if !bytes.Contains([]byte(err.Error()), []byte("unresolved portability blockers")) {
+		t.Fatalf("Export() error = %v, want portability blocker message", err)
+	}
+}
+
 func TestExportIncludesManifestAndContentSortedOrder(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "content-pack")
 	if err := InitPackage(root, "content-pack"); err != nil {

@@ -40,3 +40,5 @@ Each record should include:
 - [0010 Path Safety Only Applies To Package-Controlled Input, Not User-Typed Paths](0010-path-safety-only-applies-to-package-controlled-input.md)
 - [0011 Export/Import Treats Archives As Untrusted Input, With No Signing In V1](0011-export-import-treats-archives-as-untrusted-input.md)
 - [0012 V1 Distribution Contract And Receiver Activation](0012-v1-distribution-contract-and-receiver-activation.md)
+- [0013 Local Lineage Graph Is An Append-Only Descendant Log](0013-local-lineage-graph-is-an-append-only-descendant-log.md)
+- [0014 Content-Addressed Snapshot Store Separates Objects From Manifests](0014-content-addressed-snapshot-store-separates-objects-from-manifests.md)
