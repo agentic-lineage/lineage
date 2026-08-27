@@ -10,6 +10,7 @@ import (
 
 	"github.com/agentic-lineage/lineage/internal/config"
 	"github.com/agentic-lineage/lineage/internal/packages"
+	"github.com/agentic-lineage/lineage/internal/snapshot"
 )
 
 // noopProviderBinary returns the path to an OS-appropriate fake provider
@@ -726,6 +727,139 @@ func TestDoctorReportsEachKnownProvider(t *testing.T) {
 		if !strings.Contains(stdout.String(), "provider "+name+":") {
 			t.Fatalf("doctor output = %q, want a line for provider %s", stdout.String(), name)
 		}
+	}
+}
+
+func TestDoctorReportsCleanMaterializeStateAndGraph(t *testing.T) {
+	_, _ = setUpEnabledProject(t)
+
+	var stdout, stderr bytes.Buffer
+	if err := Execute(nil, []string{"run", "claude", "--yes"}, nil, &stdout, &stderr); err != nil {
+		t.Fatalf("run error = %v stderr=%s", err, stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if err := Execute(nil, []string{"doctor"}, nil, &stdout, &stderr); err != nil {
+		t.Fatalf("doctor error = %v stderr=%s", err, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "materialize state (claude): OK") {
+		t.Fatalf("doctor output = %q, want clean materialize state for claude", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "local lineage graph: OK") {
+		t.Fatalf("doctor output = %q, want a clean local lineage graph line", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "result: OK") {
+		t.Fatalf("doctor output = %q, want a clean overall result", stdout.String())
+	}
+}
+
+func TestDoctorWarnsOnStaleMaterializeState(t *testing.T) {
+	project, _ := setUpEnabledProject(t)
+
+	var stdout, stderr bytes.Buffer
+	if err := Execute(nil, []string{"run", "claude", "--yes"}, nil, &stdout, &stderr); err != nil {
+		t.Fatalf("run error = %v stderr=%s", err, stderr.String())
+	}
+
+	staged := filepath.Join(project, ".claude", "skills", "agent-pack-hello")
+	if err := os.RemoveAll(staged); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if err := Execute(nil, []string{"doctor"}, nil, &stdout, &stderr); err != nil {
+		t.Fatalf("doctor error = %v stderr=%s (a stale materialize state must warn, not fail)", err, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "materialize state (claude): WARN") {
+		t.Fatalf("doctor output = %q, want a WARN for the stale materialize state", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "lineage run claude") {
+		t.Fatalf("doctor output = %q, want the suggested fix to name the re-run command", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "result: OK") {
+		t.Fatalf("doctor output = %q, want an overall OK since staleness is only a warning", stdout.String())
+	}
+}
+
+func TestDoctorFailsOnCorruptGraph(t *testing.T) {
+	project, _ := setUpEnabledProject(t)
+
+	graphPath := filepath.Join(project, ".lineage", "graph.json")
+	if err := os.WriteFile(graphPath, []byte("not valid json"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	err := Execute(nil, []string{"doctor"}, nil, &stdout, &stderr)
+	if err == nil {
+		t.Fatal("doctor error = nil, want a failure for a corrupt graph.json")
+	}
+	if !strings.Contains(stdout.String(), "local lineage graph: FAIL") {
+		t.Fatalf("doctor output = %q, want a FAIL line for the corrupt graph", stdout.String())
+	}
+}
+
+func TestDoctorReportsCleanSnapshotStore(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv(config.HomeEnv, home)
+	oldWd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(oldWd)
+	if err := os.Chdir(t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+
+	pkgDir := filepath.Join(t.TempDir(), "snap-pack")
+	if err := packages.InitPackage(pkgDir, "snap-pack"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := snapshot.Create(home, pkgDir); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if err := Execute(nil, []string{"doctor"}, nil, &stdout, &stderr); err != nil {
+		t.Fatalf("doctor error = %v stderr=%s", err, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "snapshot store: OK (1 manifest(s))") {
+		t.Fatalf("doctor output = %q, want one clean snapshot manifest reported", stdout.String())
+	}
+}
+
+func TestDoctorFailsOnSnapshotMissingObject(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv(config.HomeEnv, home)
+	oldWd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(oldWd)
+	if err := os.Chdir(t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+
+	pkgDir := filepath.Join(t.TempDir(), "snap-pack")
+	if err := packages.InitPackage(pkgDir, "snap-pack"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := snapshot.Create(home, pkgDir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(config.ObjectsDir(home)); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	err = Execute(nil, []string{"doctor"}, nil, &stdout, &stderr)
+	if err == nil {
+		t.Fatal("doctor error = nil, want a failure for a snapshot referencing missing objects")
+	}
+	if !strings.Contains(stdout.String(), "snapshot store: FAIL") {
+		t.Fatalf("doctor output = %q, want a FAIL line for the broken snapshot", stdout.String())
 	}
 }
 

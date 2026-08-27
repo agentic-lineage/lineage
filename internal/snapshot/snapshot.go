@@ -194,6 +194,48 @@ func Create(home, dir string) (Manifest, ObjectID, error) {
 	return snapshotManifest, id, nil
 }
 
+// AllManifestIDs returns the ObjectID of every snapshot manifest stored
+// under home, sorted for stable output. Used by `lineage doctor` to check
+// referential integrity across every snapshot this build has ever created
+// (see docs/decisions/0015) without needing a separate index of what's been
+// written - the fanned-out directory layout itself is the enumeration.
+func AllManifestIDs(home string) ([]ObjectID, error) {
+	return allObjectIDs(config.SnapshotsDir(home))
+}
+
+// allObjectIDs walks a content-addressed store's two-level fan-out
+// directory layout (see blobPath) and reconstructs the ObjectID implied by
+// each file's location, rather than trusting any separately maintained
+// list.
+func allObjectIDs(root string) ([]ObjectID, error) {
+	prefixes, err := os.ReadDir(root)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var ids []ObjectID
+	for _, prefixEntry := range prefixes {
+		if !prefixEntry.IsDir() {
+			continue
+		}
+		prefix := prefixEntry.Name()
+		entries, err := os.ReadDir(filepath.Join(root, prefix))
+		if err != nil {
+			return nil, err
+		}
+		for _, e := range entries {
+			if e.IsDir() {
+				continue
+			}
+			ids = append(ids, ObjectID("sha256:"+prefix+e.Name()))
+		}
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	return ids, nil
+}
+
 // LoadManifest reads and verifies the snapshot manifest with the given ID,
 // then decodes it.
 func LoadManifest(home string, id ObjectID) (Manifest, error) {
