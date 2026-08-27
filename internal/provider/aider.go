@@ -86,7 +86,7 @@ func (AiderConfigAdapter) Remove(projectRoot string, state ConfigState) error {
 	if state.CreatedFile && len(replacement) == 0 {
 		return os.Remove(path)
 	}
-	return os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0o644)
+	return atomicfile.WriteFile(path, []byte(strings.Join(lines, "\n")), 0o644)
 }
 
 func (AiderConfigAdapter) NeedsApproval(projectRoot string, state ConfigState, desired bool) (bool, error) {
