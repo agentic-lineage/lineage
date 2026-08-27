@@ -96,6 +96,12 @@ func ApplyWorkflow(projectRoot string, adapter provider.Provider, pkg packages.P
 	return apply(projectRoot, adapter, []packages.Package{scoped}, &WorkflowSequence{Name: wf.Name, Steps: wf.Steps})
 }
 
+type preparedSkill struct {
+	sourceDir string
+	source    []byte
+	rendered  []byte
+}
+
 func apply(projectRoot string, adapter provider.Provider, pkgs []packages.Package, wf *WorkflowSequence) error {
 	prev, err := loadState(projectRoot, adapter.Name)
 	if err != nil {
@@ -105,6 +111,29 @@ func apply(projectRoot string, adapter provider.Provider, pkgs []packages.Packag
 	desired, err := desiredSkillDirs(adapter, pkgs)
 	if err != nil {
 		return err
+	}
+
+	prepared := make(map[string]preparedSkill, len(desired))
+	for rel, src := range desired {
+		sourcePath := filepath.Join(src, "SKILL.md")
+
+		source, err := os.ReadFile(sourcePath)
+		if err != nil {
+			return fmt.Errorf("read source skill %s: %w", rel, err)
+		}
+
+		stagedName := filepath.Base(rel)
+
+		rendered, err := adapter.RenderSkill(stagedName, source)
+		if err != nil {
+			return fmt.Errorf("render staged skill %s: %w", rel, err)
+		}
+
+		prepared[rel] = preparedSkill{
+			sourceDir: src,
+			source:    source,
+			rendered:  rendered,
+		}
 	}
 
 	for _, rel := range prev.SkillDirs {
@@ -117,29 +146,19 @@ func apply(projectRoot string, adapter provider.Provider, pkgs []packages.Packag
 	}
 
 	written := make([]string, 0, len(desired))
-	for rel, src := range desired {
+	for rel, skill := range prepared {
 		dest := filepath.Join(projectRoot, rel)
 		if err := os.RemoveAll(dest); err != nil {
 			return fmt.Errorf("clear %s before staging: %w", rel, err)
 		}
-		if err := copyDir(src, dest); err != nil {
+		if err := copyDir(skill.sourceDir, dest); err != nil {
 			return fmt.Errorf("stage skill into %s: %w", rel, err)
 		}
 
-		skillPath := filepath.Join(dest, "SKILL.md")
-		source, err := os.ReadFile(skillPath)
-		if err != nil {
-			return fmt.Errorf("read staged skill %s: %w", rel, err)
-		}
+		if !bytes.Equal(skill.source, skill.rendered) {
+			skillPath := filepath.Join(dest, "SKILL.md")
 
-		stagedName := filepath.Base(dest)
-		rendered, err := adapter.RenderSkill(stagedName, source)
-		if err != nil {
-			return fmt.Errorf("render staged skill %s: %w", rel, err)
-		}
-
-		if !bytes.Equal(source, rendered) {
-			if err := atomicfile.WriteFile(skillPath, rendered, 0o644); err != nil {
+			if err := atomicfile.WriteFile(skillPath, skill.rendered, 0o644); err != nil {
 				return fmt.Errorf("write rendered skill %s: %w", rel, err)
 			}
 		}
