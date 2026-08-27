@@ -1,6 +1,7 @@
 package materialize
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -213,6 +214,63 @@ func TestApplyUpdatesExistingFrontmatterForAuggie(t *testing.T) {
 
 	if !strings.Contains(staged, "# Review instructions") {
 		t.Fatalf("staged skill lost its body:\n%s", staged)
+	}
+}
+
+func TestApplyLeavesAuggieSkillUntouchedWhenRenderingFails(t *testing.T) {
+	root := t.TempDir()
+	pkg := buildTestPackage(t, "review-pack", "review")
+
+	auggie, err := provider.Get("auggie")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Apply(root, auggie, []packages.Package{pkg}); err != nil {
+		t.Fatalf("first Apply() error = %v", err)
+	}
+
+	stagedPath := filepath.Join(
+		root,
+		".augment",
+		"skills",
+		"review-pack-review",
+		"SKILL.md",
+	)
+
+	previous, err := os.ReadFile(stagedPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sourcePath := filepath.Join(
+		pkg.Path,
+		"skills",
+		"review",
+		"SKILL.md",
+	)
+
+	invalid := "---\nname: review\ndescription: broken"
+
+	if err := os.WriteFile(sourcePath, []byte(invalid), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Apply(root, auggie, []packages.Package{pkg}); err == nil {
+		t.Fatalf("second Apply() error = nil, want rendering error")
+	}
+
+	current, err := os.ReadFile(stagedPath)
+	if err != nil {
+		t.Fatalf("read previously staged skill: %v", err)
+	}
+
+	if !bytes.Equal(current, previous) {
+		t.Fatalf(
+			"failed Apply() changed the existing skill\nbefore:\n%s\nafter:\n%s",
+			previous,
+			current,
+		)
 	}
 }
 
