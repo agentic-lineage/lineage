@@ -1,6 +1,7 @@
 package materialize
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -410,8 +411,13 @@ func TestNeedsApprovalDefaultsMissingSchemaToCurrent(t *testing.T) {
 		t.Fatal(err)
 	}
 	rel := filepath.Join(adapter.SkillsDir, pkg.Manifest.Name+"-"+pkg.Skills[0])
-	legacy := `{"skill_dirs":["` + filepath.ToSlash(rel) + `"]}`
-	if err := os.WriteFile(path, []byte(legacy), 0o644); err != nil {
+	legacy, err := json.Marshal(struct {
+		SkillDirs []string `json:"skill_dirs"`
+	}{SkillDirs: []string{rel}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, legacy, 0o644); err != nil {
 		t.Fatal(err)
 	}
 
