@@ -228,7 +228,14 @@ func loadState(projectRoot, providerName string) (state, error) {
 	if s.Schema != currentStateSchema {
 		return state{}, fmt.Errorf("%s declares schema %d, but this build only understands schema %d", statePath(projectRoot, providerName), s.Schema, currentStateSchema)
 	}
+	for i, rel := range s.SkillDirs {
+		s.SkillDirs[i] = normalizeStatePath(rel)
+	}
 	return s, nil
+}
+
+func normalizeStatePath(rel string) string {
+	return filepath.Clean(strings.ReplaceAll(rel, "\\", string(filepath.Separator)))
 }
 
 func saveState(projectRoot, providerName string, s state) error {
