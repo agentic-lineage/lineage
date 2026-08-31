@@ -36,11 +36,15 @@ Repository skills in `.agents/skills` are Lineage guardrails, not generic engine
 
 ## Branch Policy
 
-- `master` is the stable branch.
-- `develop` is the active development branch.
-- Feature and fix branches should target `develop`.
-- Changes reach `master` only after they have been reviewed and are ready for a stable release point.
-- Protected branches should require tests to pass and owner approval before merge.
+- `main` is the stable release branch.
+- `develop` is the active integration branch and default PR target.
+- Feature and fix branches target `develop`.
+- Stable releases are promoted through a pull request from `develop` to `main`.
+- Release promotions use a merge commit rather than squash merging.
+- After a release promotion lands, `main` is synchronized back into `develop`
+  before normal development continues.
+- Hotfixes that land on `main` must also be synchronized back into `develop`.
+- Protected branches require tests and the configured review policy before merge.
 
 ## Lean Planning
 
