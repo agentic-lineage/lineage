@@ -41,7 +41,7 @@ A package with any blocking error fails validation and refuses to export/publish
 
 ## What `lineage inspect` Shows
 
-`lineage inspect <ref>` resolves a package (project path, user id, or workspace id) and shows its manifest, discovered skills/workflows/agents/policies/references, content digest, and declared capabilities — without enabling it or writing anything. This is the point in the lifecycle meant for a receiver to actually read what they're about to enable, before they type `lineage enable`.
+`lineage inspect <ref>` resolves a package (project path, user id, or workspace id) and shows its manifest, discovered skills/workflows/agents/policies/references, content digest, and declared capabilities — without enabling or writing anything. This is the point in the lifecycle meant for a receiver to actually read what they're about to enable, before they type `lineage enable`.
 
 ## What `publish`, `pull`, And `import` Protect
 
@@ -55,6 +55,12 @@ None of this proves *who* published a package — v1 has no signing and no publi
 
 - **Enable**: if a package declares setup (tracker files or directories its workflow expects to exist), `lineage enable` shows exactly what would be created — file by file, directory by directory — and asks for confirmation before creating anything, unless `--yes` was passed. Declining setup leaves the workspace completely unchanged, same as declining to enable at all.
 - **Materialize**: the first time a given package set would actually change what's staged for a provider, `lineage run`/`lineage workflow run` shows the plan and asks for confirmation (`y`/`yes`, or `--yes` to skip the prompt for scripts). Re-running with an unchanged package set doesn't re-prompt. This is tracked per-provider in `.lineage/materialized-<provider>.json` so cleanup on disable is exact, not guessed from disk contents (ADR 0008).
+
+## Concurrent Invocations Are Not Locked
+
+`.lineage/config.yaml` and `.lineage/materialized-<provider>.json` take no advisory or file lock. Running two `lineage` invocations against the same project at the same time — two terminals, or a script that shells out twice — can race: both read the same starting content, both write, and the second write wins. The first process's change is silently lost, with no error to either caller.
+
+This is a lost update, not corruption — every write to these files goes through `internal/atomicfile` (temp file + atomic rename), so a reader never sees a torn or partially-written file, only the previous version or the complete new one. For a single-user local CLI this is an accepted tradeoff: don't run concurrent `lineage enable`/`lineage run` invocations against the same project, and if you do, expect the second one to win.
 
 ## Capabilities: Declared, Not Enforced
 
