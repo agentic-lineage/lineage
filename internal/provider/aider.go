@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/agentic-lineage/lineage/internal/atomicfile"
+	"gopkg.in/yaml.v3"
 )
 
 // AiderConfigAdapter links the generated conventions file through Aider's
@@ -47,11 +48,25 @@ func (AiderConfigAdapter) Ensure(projectRoot string) (ConfigState, error) {
 
 	original := append([]string(nil), lines[start:end]...)
 	value := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(lines[start]), "read:"))
-	if value == aiderReadPath || aiderReadListContains(lines[start+1:end], aiderReadPath) {
+	entries, sequence, err := aiderReadEntries(lines, start, end)
+	if err != nil {
+		return ConfigState{}, fmt.Errorf("parse %s read setting: %w", aiderConfigFile, err)
+	}
+	if aiderReadEntriesContain(entries, aiderReadPath) {
 		return ConfigState{}, nil
 	}
 	var replacement []string
-	if value != "" {
+	if sequence && strings.HasPrefix(value, "[") {
+		close := strings.LastIndex(value, "]")
+		if close < 0 {
+			return ConfigState{}, fmt.Errorf("parse %s read setting: flow list has no closing bracket", aiderConfigFile)
+		}
+		separator := ", "
+		if strings.TrimSpace(value[1:close]) == "" {
+			separator = ""
+		}
+		replacement = []string{strings.TrimSuffix(lines[start], value) + value[:close] + separator + aiderReadPath + value[close:]}
+	} else if value != "" {
 		replacement = []string{"read:", "  - " + value, "  - " + aiderReadPath}
 	} else {
 		replacement = append(append([]string(nil), original...), "  - "+aiderReadPath)
@@ -103,8 +118,11 @@ func (AiderConfigAdapter) NeedsApproval(projectRoot string, state ConfigState, d
 	if !ok {
 		return true, nil
 	}
-	value := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(lines[start]), "read:"))
-	return value != aiderReadPath && !aiderReadListContains(lines[start+1:end], aiderReadPath), nil
+	entries, _, err := aiderReadEntries(lines, start, end)
+	if err != nil {
+		return false, fmt.Errorf("parse %s read setting: %w", aiderConfigFile, err)
+	}
+	return !aiderReadEntriesContain(entries, aiderReadPath), nil
 }
 
 func aiderReadBlock(lines []string) (int, int, bool) {
@@ -138,10 +156,34 @@ func aiderReadBlock(lines []string) (int, int, bool) {
 	return start, end, true
 }
 
-func aiderReadListContains(lines []string, path string) bool {
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "-") && strings.TrimSpace(strings.TrimPrefix(trimmed, "-")) == path {
+func aiderReadEntries(lines []string, start, end int) ([]string, bool, error) {
+	var document yaml.Node
+	if err := yaml.Unmarshal([]byte(strings.Join(lines[start:end], "\n")), &document); err != nil {
+		return nil, false, err
+	}
+	if len(document.Content) == 0 || len(document.Content[0].Content) < 2 {
+		return nil, false, fmt.Errorf("read setting has no value")
+	}
+	value := document.Content[0].Content[1]
+	if value.Kind == yaml.SequenceNode {
+		entries := make([]string, 0, len(value.Content))
+		for _, entry := range value.Content {
+			if entry.Kind != yaml.ScalarNode {
+				return nil, true, fmt.Errorf("read list contains a non-scalar value")
+			}
+			entries = append(entries, entry.Value)
+		}
+		return entries, value.Style&yaml.FlowStyle != 0, nil
+	}
+	if value.Kind != yaml.ScalarNode {
+		return nil, false, fmt.Errorf("read setting is not scalar or list")
+	}
+	return []string{value.Value}, false, nil
+}
+
+func aiderReadEntriesContain(entries []string, path string) bool {
+	for _, entry := range entries {
+		if entry == path {
 			return true
 		}
 	}

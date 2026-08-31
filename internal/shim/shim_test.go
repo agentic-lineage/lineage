@@ -23,13 +23,13 @@ func TestFileNameWindowsHasCmdExtension(t *testing.T) {
 	}
 }
 
-func TestInstallWritesShimForEveryKnownProvider(t *testing.T) {
+func TestInstallWritesShimsForLaunchableProviders(t *testing.T) {
 	home := t.TempDir()
 	if err := Install(home, "/usr/local/bin/lineage"); err != nil {
 		t.Fatalf("Install() error = %v", err)
 	}
 
-	for _, name := range []string{"claude", "codex"} {
+	for _, name := range []string{"claude", "codex", "aider"} {
 		path := filepath.Join(home, "bin", FileName(name, runtime.GOOS))
 		if _, err := os.Stat(path); err != nil {
 			t.Fatalf("expected shim for %s at %s: %v", name, path, err)

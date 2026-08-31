@@ -1465,7 +1465,7 @@ Using a package:
 Setup:
   init user                               create the user package directory
   init workspace <name>                   create a shared workspace
-  install-shims                           put lineage in front of claude/codex on PATH
+  install-shims                           put lineage in front of launchable providers on PATH
   doctor                                  check config, PATH, and provider setup
 
   -h, --help                              show this help

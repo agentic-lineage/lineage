@@ -253,7 +253,8 @@ lineage doctor
 lineage workflow run resume-review claude --dry-run
 ```
 
-Install local shims when you want commands such as `claude` or `codex` to enter
+Install local shims when you want launchable provider commands such as `claude`,
+`codex`, or `aider` to enter
 Lineage first:
 
 ```bash

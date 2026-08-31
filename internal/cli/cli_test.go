@@ -253,7 +253,7 @@ func TestRunUnknownProviderListsKnownProviders(t *testing.T) {
 	if err == nil {
 		t.Fatal("Execute(run does-not-exist) error = nil, want error")
 	}
-	if !strings.Contains(stderr.String(), "claude") || !strings.Contains(stderr.String(), "codex") {
+	if !strings.Contains(stderr.String(), "claude") || !strings.Contains(stderr.String(), "codex") || !strings.Contains(stderr.String(), "aider") {
 		t.Fatalf("stderr = %q, want it to list known providers", stderr.String())
 	}
 }
@@ -262,8 +262,11 @@ func TestUsageListsKnownProvidersNotHardcoded(t *testing.T) {
 	var stdout bytes.Buffer
 	printUsage(&stdout)
 	out := stdout.String()
-	if !strings.Contains(out, "claude") || !strings.Contains(out, "codex") {
+	if !strings.Contains(out, "claude") || !strings.Contains(out, "codex") || !strings.Contains(out, "aider") {
 		t.Fatalf("usage = %q, want it to mention every registered provider", out)
+	}
+	if !strings.Contains(out, "put lineage in front of launchable providers on PATH") {
+		t.Fatalf("usage = %q, want install-shims help to describe launchable providers", out)
 	}
 }
 

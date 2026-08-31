@@ -243,6 +243,49 @@ func TestAiderConfigListDoesNotDuplicateConventions(t *testing.T) {
 	}
 }
 
+func TestAiderConfigFlowListPreservesEntries(t *testing.T) {
+	root := t.TempDir()
+	original := "read: [custom_rules.md]\nfoo: bar\n"
+	if err := os.WriteFile(filepath.Join(root, ".aider.conf.yml"), []byte(original), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	aider, _ := provider.Get("aider")
+	state, err := aider.Config.Ensure(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := os.ReadFile(filepath.Join(root, ".aider.conf.yml"))
+	content := string(got)
+	if !strings.Contains(content, "read: [custom_rules.md, CONVENTIONS.md]") || !strings.Contains(content, "foo: bar") {
+		t.Fatalf("flow-list Aider config was not preserved: %s", content)
+	}
+	if err := aider.Config.Remove(root, state); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = os.ReadFile(filepath.Join(root, ".aider.conf.yml"))
+	if string(got) != original {
+		t.Fatalf("flow-list Aider config was not restored: got %q want %q", got, original)
+	}
+}
+
+func TestAiderConfigQuotedListDoesNotDuplicateConventions(t *testing.T) {
+	root := t.TempDir()
+	original := "read:\n  - \"CONVENTIONS.md\"\n  - custom_rules.md\n"
+	if err := os.WriteFile(filepath.Join(root, ".aider.conf.yml"), []byte(original), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	aider, _ := provider.Get("aider")
+	if state, err := aider.Config.Ensure(root); err != nil {
+		t.Fatal(err)
+	} else if len(state.Managed) != 0 {
+		t.Fatalf("quoted conventions entry caused a rewrite: %#v", state)
+	}
+	got, _ := os.ReadFile(filepath.Join(root, ".aider.conf.yml"))
+	if string(got) != original {
+		t.Fatalf("quoted-list Aider config changed: got %q want %q", got, original)
+	}
+}
+
 func TestAiderConfigCleanupAndApproval(t *testing.T) {
 	root := t.TempDir()
 	pkg := buildTestPackage(t, "review-pack", "review")
