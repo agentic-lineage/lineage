@@ -21,11 +21,28 @@ type ValidateReport struct {
 	// doesn't itself provide (it may be provided by another package at
 	// enable time - Validate only sees this one package in isolation).
 	Notes []string
+	// InstructionFindings are the results of ScanForInstructionRisk: risky
+	// agent-instruction patterns found in this package's skills, workflows,
+	// agents, policies, adapters, and setup.files[].template. A
+	// SeverityBlock finding here blocks Passed() exactly like an Errors
+	// entry does; a SeverityWarn finding does not block on its own but
+	// should still be surfaced to a receiver before enabling.
+	InstructionFindings []InstructionFinding
+}
+
+// BlockingCount is the total number of problems that make Passed() false:
+// every entry in Errors, plus every instruction finding severe enough to
+// block on its own. Callers reporting "failed with N error(s)" should use
+// this instead of len(Errors) directly, so a failure caused solely by a
+// hard-stop instruction finding is still reported accurately instead of
+// as "0 error(s)".
+func (r ValidateReport) BlockingCount() int {
+	return len(r.Errors) + len(BlockingFindings(r.InstructionFindings))
 }
 
 // Passed reports whether the package validated cleanly.
 func (r ValidateReport) Passed() bool {
-	return len(r.Errors) == 0
+	return r.BlockingCount() == 0
 }
 
 // Validate runs every Phase 2 format and safety check against a package
@@ -101,6 +118,12 @@ func Validate(dir string) (ValidateReport, error) {
 	for _, f := range findings {
 		report.Errors = append(report.Errors, fmt.Sprintf("%s: %s", f.Path, f.Reason))
 	}
+
+	instructionFindings, err := ScanForInstructionRisk(dir, manifest.Setup)
+	if err != nil {
+		return report, err
+	}
+	report.InstructionFindings = instructionFindings
 
 	digest, err := ComputeDigest(dir)
 	if err != nil {

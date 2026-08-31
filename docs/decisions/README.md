@@ -43,3 +43,4 @@ Each record should include:
 - [0013 Local Lineage Graph Is An Append-Only Descendant Log](0013-local-lineage-graph-is-an-append-only-descendant-log.md)
 - [0014 Content-Addressed Snapshot Store Separates Objects From Manifests](0014-content-addressed-snapshot-store-separates-objects-from-manifests.md)
 - [0015 The `.lineage` Directory Is A Versioned, Enumerated Container With A Gitignore Default](0015-the-lineage-directory-is-a-versioned-enumerated-container.md)
+- [0016 Instruction-Risk Scanning: A Documented Pattern List With A Severity Split](0016-instruction-risk-scanning-severity-and-scope.md)

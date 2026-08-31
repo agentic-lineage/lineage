@@ -31,6 +31,10 @@ func Export(dir string, w io.Writer) error {
 	if err != nil {
 		return err
 	}
+	// NewPortabilityReport folds InstructionFindings' blocking findings into
+	// Blockers alongside report.Errors (see its doc comment), so this stays
+	// the single, complete gate - a hard-stop instruction finding refuses
+	// export exactly like a secret-scan or missing-export error does.
 	portability := NewPortabilityReport(report)
 	if portability.HasBlockers() {
 		return fmt.Errorf("package has unresolved portability blockers, refusing to export (%d blocker(s)); run `lineage package validate` for details", len(portability.Blockers))

@@ -461,7 +461,7 @@ func runPackageValidate(dir string, yamlOutput bool, stdout, stderr io.Writer) e
 			return writeErr
 		}
 		if !report.Passed() {
-			err := fmt.Errorf("package validation failed with %d error(s)", len(report.Errors))
+			err := fmt.Errorf("package validation failed with %d error(s)", report.BlockingCount())
 			fmt.Fprintln(stderr, err)
 			return err
 		}
@@ -475,6 +475,8 @@ func runPackageValidate(dir string, yamlOutput bool, stdout, stderr io.Writer) e
 	fmt.Fprintf(stdout, "  network: %s\n", listValue(report.Manifest.Capabilities.Network))
 	packages.WritePortabilityReport(stdout, packages.NewPortabilityReport(report))
 
+	printInstructionFindings(stdout, report.InstructionFindings)
+
 	if len(report.Notes) > 0 {
 		fmt.Fprintf(stdout, "notes:\n")
 		for _, note := range report.Notes {
@@ -482,13 +484,16 @@ func runPackageValidate(dir string, yamlOutput bool, stdout, stderr io.Writer) e
 		}
 	}
 
-	if !report.Passed() {
+	if len(report.Errors) > 0 {
 		fmt.Fprintf(stdout, "errors:\n")
 		for _, e := range report.Errors {
 			fmt.Fprintf(stdout, "  - %s\n", e)
 		}
+	}
+
+	if !report.Passed() {
 		fmt.Fprintf(stdout, "result: FAIL\n")
-		err := fmt.Errorf("package validation failed with %d error(s)", len(report.Errors))
+		err := fmt.Errorf("package validation failed with %d error(s)", report.BlockingCount())
 		fmt.Fprintln(stderr, err)
 		return err
 	}
@@ -544,20 +549,10 @@ func runEnable(args []string, home string, stdin *bufio.Reader, stdout, stderr i
 		fmt.Fprintln(stderr, err)
 		return err
 	}
-	_, err := enableRef(ref, home, autoApprove, stdin, stdout, stderr)
+	_, err := enableRef(ref, home, autoApprove, false, stdin, stdout, stderr)
 	return err
 }
 
-// enableRef is runEnable's actual work, factored out so `lineage add`
-// (which pulls a package and then enables it in one command) shares the
-// exact same project-root resolution, dependency validation, and setup
-// handling instead of a second, drifting implementation.
-//
-// The bool return reports whether the package actually ended up enabled: a
-// declined setup prompt is not an error (enableRef already printed why and
-// left the workspace unchanged), but it is also not success - callers like
-// runAdd need to tell the two apart instead of treating "no error" as
-// "enabled" and reporting readiness for a package that was never turned on.
 // projectRelativeRef re-expresses a "./" or "../" style ref - typed
 // relative to cwd - against projectRoot, which is where the config lives
 // and what `lineage run` later resolves enabled_packages entries against.
@@ -580,11 +575,46 @@ func projectRelativeRef(ref, projectRoot, resolveRoot, resolvedPath string) stri
 	return rel
 }
 
-func enableRef(ref, home string, autoApprove bool, stdin *bufio.Reader, stdout, stderr io.Writer) (bool, error) {
+// enableAssessment is the read-only result of everything enabling a package
+// would need to check before ever touching the workspace: where it resolves
+// to, what project it would be enabled into, and what instruction-risk/
+// setup findings a receiver would need to see and approve. Both enableRef
+// and runAdd compute this the same way (via assessEnable), so a receiver
+// never sees two different pictures of the same package depending on which
+// command they used to look at it.
+type enableAssessment struct {
+	projectRoot  string
+	configPath   string
+	cfg          config.ProjectConfig
+	resolvedPath string
+	storedRef    string
+	newEnabled   []string
+	manifest     packages.Manifest
+	blocking     []packages.InstructionFinding
+	warnings     []packages.InstructionFinding
+	unscanned    []packages.InstructionFinding
+	setupPlan    packages.SetupPlan
+}
+
+// needsConfirmation reports whether enabling this package requires showing
+// something to the user and getting a yes before proceeding: a risk
+// warning, a scan blind spot (an unscanned file), or setup work.
+func (a enableAssessment) needsConfirmation() bool {
+	return len(a.warnings) > 0 || len(a.unscanned) > 0 || a.setupPlan.NeedsAction()
+}
+
+// assessEnable resolves ref against the project the same way enabling it
+// would, then runs dependency validation, the instruction-risk scan, and
+// the setup-plan computation - everything read-only that has to happen
+// before a package can be enabled. It performs no side effects and prints
+// nothing itself; callers (enableRef, runAdd) report their own errors so
+// output stays exactly where each call site already puts it.
+func assessEnable(ref, home string) (enableAssessment, error) {
+	var a enableAssessment
+
 	cwd, err := os.Getwd()
 	if err != nil {
-		fmt.Fprintln(stderr, err)
-		return false, err
+		return a, err
 	}
 
 	// Reuse the project config an enclosing `lineage run` would find (it
@@ -601,8 +631,7 @@ func enableRef(ref, home string, autoApprove bool, stdin *bufio.Reader, stdout, 
 		configPath = found.Path
 		cfg = found.Config
 	} else if !errors.Is(err, config.ErrProjectConfigNotFound) {
-		fmt.Fprintln(stderr, err)
-		return false, err
+		return a, err
 	}
 
 	// A "./" or "../" style ref is relative to where the user typed it
@@ -618,8 +647,7 @@ func enableRef(ref, home string, autoApprove bool, stdin *bufio.Reader, stdout, 
 	}
 	resolvedPath, err := packages.ResolveReference(home, cfg.Workspace, resolveRoot, ref)
 	if err != nil {
-		fmt.Fprintln(stderr, err)
-		return false, err
+		return a, err
 	}
 
 	// The config we're about to save lives at the project root, and
@@ -639,12 +667,10 @@ func enableRef(ref, home string, autoApprove bool, stdin *bufio.Reader, stdout, 
 	// legitimately come from a different already-enabled package.
 	resolvedForValidation, err := packages.ResolveEnabled(home, cfg.Workspace, projectRoot, newEnabled)
 	if err != nil {
-		fmt.Fprintln(stderr, err)
-		return false, err
+		return a, err
 	}
 	if err := packages.ValidateDependencies(resolvedForValidation); err != nil {
-		fmt.Fprintln(stderr, err)
-		return false, err
+		return a, err
 	}
 
 	// A package can declare local setup (#72) - tracker files or
@@ -654,40 +680,203 @@ func enableRef(ref, home string, autoApprove bool, stdin *bufio.Reader, stdout, 
 	// enable at all, rather than enabling into a half-set-up state.
 	manifest, err := packages.LoadManifest(resolvedPath)
 	if err != nil {
-		fmt.Fprintln(stderr, err)
-		return false, err
+		return a, err
 	}
+
+	// Scan for risky agent instructions before this package's setup or
+	// skills can ever reach the workspace (internal/packages/
+	// instructions.go). A hard-stop finding refuses enable outright, the
+	// same posture publish already takes.
+	riskFindings, err := packages.ScanForInstructionRisk(resolvedPath, manifest.Setup)
+	if err != nil {
+		return a, err
+	}
+
 	setupPlan, err := packages.PlanSetup(projectRoot, manifest.Setup)
 	if err != nil {
-		fmt.Fprintln(stderr, err)
-		return false, err
+		return a, err
 	}
-	if setupPlan.NeedsAction() {
-		fmt.Fprintf(stdout, "%s wants to set up:\n", manifest.Name)
-		for _, f := range setupPlan.Files {
+
+	return enableAssessment{
+		projectRoot:  projectRoot,
+		configPath:   configPath,
+		cfg:          cfg,
+		resolvedPath: resolvedPath,
+		storedRef:    storedRef,
+		newEnabled:   newEnabled,
+		manifest:     manifest,
+		blocking:     packages.BlockingFindings(riskFindings),
+		warnings:     packages.WarningFindings(riskFindings),
+		unscanned:    packages.UnscannedFindings(riskFindings),
+		setupPlan:    setupPlan,
+	}, nil
+}
+
+// findingExcerptSuffix returns a printable " (%q)" suffix for a finding's
+// bounded, single-line excerpt (instructions.go documents it as always safe
+// to print), or "" when there isn't one - an unscanned finding never has an
+// excerpt, since there was nothing matched to quote.
+func findingExcerptSuffix(f packages.InstructionFinding) string {
+	if f.Excerpt == "" {
+		return ""
+	}
+	return fmt.Sprintf(" (%q)", f.Excerpt)
+}
+
+// printInstructionFindings writes the human-readable "instruction risk:"
+// and (if any) "could not fully check the following files:" sections shared
+// by validate and inspect - so a receiver sees pattern matches and scan
+// blind spots as two different things, never lumped into one flat list.
+func printInstructionFindings(stdout io.Writer, findings []packages.InstructionFinding) {
+	var matched []packages.InstructionFinding
+	for _, f := range findings {
+		if f.Category != packages.CategoryUnscanned {
+			matched = append(matched, f)
+		}
+	}
+	if len(matched) > 0 {
+		fmt.Fprintf(stdout, "instruction risk:\n")
+		for _, f := range matched {
+			fmt.Fprintf(stdout, "  - [%s/%s] %s: %s%s\n", f.Severity, f.Category, f.Path, f.Reason, findingExcerptSuffix(f))
+		}
+	}
+	if unscanned := packages.UnscannedFindings(findings); len(unscanned) > 0 {
+		fmt.Fprintf(stdout, "could not fully check the following files:\n")
+		for _, f := range unscanned {
+			fmt.Fprintf(stdout, "  - %s: %s\n", f.Path, f.Reason)
+		}
+	}
+}
+
+// printBlockingFindings writes the "was not enabled" report for a package
+// that failed instruction-risk scanning outright, and returns the error
+// enableRef/runAdd should report to stderr and return - both call sites did
+// this with hand-duplicated print loops before; centralizing it here means
+// the wording and the error text can't drift between them. leadingBlank
+// matches each call site's existing output shape (runAdd prints this after
+// its inspect summary; enableRef opens directly with it).
+func printBlockingFindings(stdout io.Writer, name string, blocking []packages.InstructionFinding, leadingBlank bool) error {
+	prefix := ""
+	if leadingBlank {
+		prefix = "\n"
+	}
+	fmt.Fprintf(stdout, "%s%s was not enabled: it contains instructions flagged as unsafe to run automatically:\n", prefix, name)
+	for _, f := range blocking {
+		fmt.Fprintf(stdout, "  - [%s] %s: %s%s\n", f.Category, f.Path, f.Reason, findingExcerptSuffix(f))
+	}
+	return fmt.Errorf("package %q failed instruction-risk scanning (%d blocking finding(s))", name, len(blocking))
+}
+
+// printEnableWarnings writes the risk-warning, unscanned-file, and
+// setup-plan sections a receiver needs to see before confirming an enable -
+// shared by enableRef and runAdd so the two commands can't show a receiver
+// two different pictures of the same package. leadingBlank matches each
+// call site's existing output shape.
+func printEnableWarnings(stdout io.Writer, a enableAssessment, leadingBlank bool) {
+	prefix := ""
+	if leadingBlank {
+		prefix = "\n"
+	}
+	if len(a.warnings) > 0 {
+		fmt.Fprintf(stdout, "%s%s contains instructions flagged as risky:\n", prefix, a.manifest.Name)
+		for _, f := range a.warnings {
+			fmt.Fprintf(stdout, "  - [%s] %s: %s%s\n", f.Category, f.Path, f.Reason, findingExcerptSuffix(f))
+		}
+	}
+	if len(a.unscanned) > 0 {
+		fmt.Fprintf(stdout, "%s%s could not fully check the following files:\n", prefix, a.manifest.Name)
+		for _, f := range a.unscanned {
+			fmt.Fprintf(stdout, "  - %s: %s\n", f.Path, f.Reason)
+		}
+	}
+	if a.setupPlan.NeedsAction() {
+		fmt.Fprintf(stdout, "%s%s wants to set up:\n", prefix, a.manifest.Name)
+		for _, f := range a.setupPlan.Files {
 			if f.Exists {
 				continue
 			}
 			fmt.Fprintf(stdout, "  create file %s%s\n", f.Path, describeSuffix(f.Description))
 		}
-		for _, d := range setupPlan.Directories {
+		for _, d := range a.setupPlan.Directories {
 			if d.Exists {
 				continue
 			}
 			fmt.Fprintf(stdout, "  create directory %s%s\n", d.Path, describeSuffix(d.Description))
 		}
-		if !autoApprove {
-			fmt.Fprint(stdout, "Create these? [y/N] ")
+	}
+}
+
+// enableDeclinePrompt returns the confirmation prompt and matching decline
+// message for a's combination of warnings/unscanned files/setup work.
+// Setup-only keeps its original wording verbatim so existing output
+// expectations don't shift; the other cases are new/expanded and get their
+// own accurate wording rather than all sharing one generic message.
+func enableDeclinePrompt(a enableAssessment) (prompt, declineMsg string) {
+	switch {
+	case a.setupPlan.NeedsAction() && len(a.warnings) == 0 && len(a.unscanned) == 0:
+		return "Create these? [y/N] ", "not enabled - setup was declined. Nothing was created or changed."
+	case len(a.warnings) > 0 && len(a.unscanned) == 0 && !a.setupPlan.NeedsAction():
+		return "Proceed? [y/N] ", "not enabled - risky instructions were not approved. Nothing was created or changed."
+	case len(a.warnings) == 0 && len(a.unscanned) > 0 && !a.setupPlan.NeedsAction():
+		return "Proceed? [y/N] ", "not enabled - the files that could not be fully checked were not approved. Nothing was created or changed."
+	default:
+		return "Proceed? [y/N] ", "not enabled - declined. Nothing was created or changed."
+	}
+}
+
+// enableRef is runEnable's actual work, factored out so `lineage add`
+// (which pulls a package and then enables it in one command) shares the
+// exact same project-root resolution, dependency validation, and setup
+// handling instead of a second, drifting implementation.
+//
+// The bool return reports whether the package actually ended up enabled: a
+// declined prompt (setup, or the instruction-risk/unscanned confirmation
+// below) is not an error (enableRef already printed why and left the
+// workspace unchanged), but it is also not success - callers like runAdd
+// need to tell the two apart instead of treating "no error" as "enabled"
+// and reporting readiness for a package that was never turned on.
+//
+// preConfirmed is set by runAdd, which has already run this exact
+// assessment and gotten its own single yes/no before calling in - it skips
+// enableRef's own confirm() read (but not its printing) so a receiver never
+// answers the same question twice in one `add` invocation (see
+// docs/decisions/0016's Consequences).
+func enableRef(ref, home string, autoApprove, preConfirmed bool, stdin *bufio.Reader, stdout, stderr io.Writer) (bool, error) {
+	a, err := assessEnable(ref, home)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return false, err
+	}
+
+	if len(a.blocking) > 0 {
+		err := printBlockingFindings(stdout, a.manifest.Name, a.blocking, false)
+		fmt.Fprintln(stderr, err)
+		return false, err
+	}
+
+	// The instruction-risk warnings, any unscanned files, and the setup
+	// plan are all confirmed through the same single prompt below, not
+	// several sequential ones: confirm() shares one buffered reader across
+	// this whole command invocation (see Execute), but asking several
+	// sequential yes/no questions about the same package is still worse UX
+	// than covering everything with one.
+	if a.needsConfirmation() {
+		printEnableWarnings(stdout, a, false)
+		if !autoApprove && !preConfirmed {
+			prompt, declineMsg := enableDeclinePrompt(a)
+			fmt.Fprint(stdout, prompt)
 			if !confirm(stdin) {
-				fmt.Fprintln(stdout, "not enabled - setup was declined. Nothing was created or changed.")
+				fmt.Fprintln(stdout, declineMsg)
 				return false, nil
 			}
 		}
-		if err := packages.ApplySetup(projectRoot, setupPlan); err != nil {
-			fmt.Fprintln(stderr, err)
-			return false, err
+		if a.setupPlan.NeedsAction() {
+			if err := packages.ApplySetup(a.projectRoot, a.setupPlan); err != nil {
+				fmt.Fprintln(stderr, err)
+				return false, err
+			}
+			fmt.Fprintln(stdout, "setup complete.")
 		}
-		fmt.Fprintln(stdout, "setup complete.")
 	}
 
 	// Everything from here on must succeed before config is saved: once
@@ -704,7 +893,7 @@ func enableRef(ref, home string, autoApprove bool, stdin *bufio.Reader, stdout, 
 	// from (#6). Digest is recomputed here (ComputeDigest, the same
 	// identity Pull/Import verify against) rather than reusing a value
 	// from earlier resolution, since enableRef never needed it until now.
-	digest, err := packages.ComputeDigest(resolvedPath)
+	digest, err := packages.ComputeDigest(a.resolvedPath)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return false, err
@@ -714,30 +903,30 @@ func enableRef(ref, home string, autoApprove bool, stdin *bufio.Reader, stdout, 
 	// enabled (#7), so the graph record below can point at something that
 	// can later be inspected, copied, or reconstructed byte-for-byte
 	// instead of only naming a version.
-	_, snapshotID, err := snapshot.Create(home, resolvedPath)
+	_, snapshotID, err := snapshot.Create(home, a.resolvedPath)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return false, err
 	}
 
-	if _, err := graph.Append(projectRoot, graph.Record{
+	if _, err := graph.Append(a.projectRoot, graph.Record{
 		Event: "enable",
 		Parent: graph.ParentRef{
-			Name:       manifest.Name,
-			Version:    manifest.Version,
+			Name:       a.manifest.Name,
+			Version:    a.manifest.Version,
 			Digest:     digest,
 			SnapshotID: string(snapshotID),
 		},
 		Descendant: graph.DescendantRef{
-			Workspace: cfg.Workspace,
+			Workspace: a.cfg.Workspace,
 		},
 	}); err != nil {
 		fmt.Fprintln(stderr, err)
 		return false, err
 	}
 
-	cfg.EnabledPackages = newEnabled
-	if err := config.SaveProjectConfig(configPath, cfg); err != nil {
+	a.cfg.EnabledPackages = a.newEnabled
+	if err := config.SaveProjectConfig(a.configPath, a.cfg); err != nil {
 		fmt.Fprintln(stderr, err)
 		return false, err
 	}
@@ -747,12 +936,12 @@ func enableRef(ref, home string, autoApprove bool, stdin *bufio.Reader, stdout, 
 	// in the receiver's repo. EnsureGitignored is idempotent, so reinforce
 	// the entry on every successful enable in case it was removed
 	// accidentally.
-	if err := config.EnsureGitignored(projectRoot); err != nil {
+	if err := config.EnsureGitignored(a.projectRoot); err != nil {
 		fmt.Fprintln(stderr, err)
 		return false, err
 	}
 
-	fmt.Fprintf(stdout, "enabled package %s in %s\n", storedRef, configPath)
+	fmt.Fprintf(stdout, "enabled package %s in %s\n", a.storedRef, a.configPath)
 	return true, nil
 }
 
@@ -858,7 +1047,39 @@ func runAdd(args []string, home string, stdin *bufio.Reader, stdout, stderr io.W
 	fmt.Fprintf(stdout, "  filesystem.read: %s\n", listValue(pkg.Manifest.Capabilities.Filesystem.Read))
 	fmt.Fprintf(stdout, "  network: %s\n", listValue(pkg.Manifest.Capabilities.Network))
 
+	// Assess what enabling this package would actually involve - the same
+	// scan/setup-plan enableRef itself runs - so a receiver sees
+	// instruction-risk findings (and any dependency problem) before being
+	// asked anything, instead of only after already saying yes to a generic
+	// "enable this?" prompt that didn't mention them.
+	a, err := assessEnable(name, home)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+
+	if len(a.blocking) > 0 {
+		err := printBlockingFindings(stdout, a.manifest.Name, a.blocking, true)
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+
+	// A risk warning or unscanned file has to be seen and approved before a
+	// receiver even decides to enable, so when either is present, add folds
+	// that decision and any setup preview into the one combined confirm
+	// below (preConfirmed=true then skips enableRef's own read - see its
+	// doc comment). A setup-only package has nothing risk-related to show
+	// upfront: add asks its plain "enable this?" question exactly as
+	// before, and enableRef shows the setup plan and asks its own separate
+	// question, unchanged from before instruction-risk scanning existed
+	// (TestAddDecliningSetupDoesNotReportReady exercises exactly this -
+	// "yes" to enabling, "no" to the setup it's then shown separately).
+	showsRiskInfo := len(a.warnings) > 0 || len(a.unscanned) > 0
+
 	if !autoApprove {
+		if showsRiskInfo {
+			printEnableWarnings(stdout, a, true)
+		}
 		fmt.Fprint(stdout, "\nEnable this package in the current project? [y/N] ")
 		if !confirm(stdin) {
 			fmt.Fprintf(stdout, "not enabled. It's still available locally - run `lineage enable %s` when you're ready.\n", name)
@@ -867,7 +1088,7 @@ func runAdd(args []string, home string, stdin *bufio.Reader, stdout, stderr io.W
 	}
 
 	fmt.Fprintln(stdout)
-	enabled, err := enableRef(name, home, autoApprove, stdin, stdout, stderr)
+	enabled, err := enableRef(name, home, autoApprove, showsRiskInfo, stdin, stdout, stderr)
 	if err != nil {
 		return err
 	}
@@ -1100,8 +1321,19 @@ func runInspect(args []string, home string, stdout, stderr io.Writer) error {
 		return err
 	}
 
+	// inspect performs no full validation (see structured.go's PackageReport
+	// doc comment - it has no pass/fail concept), but a risky instruction is
+	// exactly the kind of thing a receiver deciding whether to enable a
+	// package needs to see here, so it gets its own scan call rather than
+	// piggybacking on Validate.
+	findings, err := packages.ScanForInstructionRisk(pkg.Path, pkg.Manifest.Setup)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return err
+	}
+
 	if yamlOutput {
-		return writeYAML(stdout, inspectReport(pkg))
+		return writeYAML(stdout, inspectReport(pkg, findings))
 	}
 
 	fmt.Fprintf(stdout, "package: %s@%s (schema %d)\n", pkg.Manifest.Name, pkg.Manifest.Version, pkg.Manifest.Schema)
@@ -1118,6 +1350,7 @@ func runInspect(args []string, home string, stdout, stderr io.Writer) error {
 	fmt.Fprintf(stdout, "capabilities:\n")
 	fmt.Fprintf(stdout, "  filesystem.read: %s\n", listValue(pkg.Manifest.Capabilities.Filesystem.Read))
 	fmt.Fprintf(stdout, "  network: %s\n", listValue(pkg.Manifest.Capabilities.Network))
+	printInstructionFindings(stdout, findings)
 	return nil
 }
 

@@ -68,6 +68,10 @@ func Publish(dir string, cfg RegistryConfig) (PublishResult, error) {
 	if err != nil {
 		return PublishResult{}, err
 	}
+	// See Export's identical gate (internal/packages/export.go):
+	// NewPortabilityReport folds instruction-risk blocking findings into
+	// Blockers alongside report.Errors, so this stays the single, complete
+	// gate for publish too.
 	portability := NewPortabilityReport(report)
 	if portability.HasBlockers() {
 		return PublishResult{}, fmt.Errorf("package has unresolved portability blockers, refusing to publish (%d blocker(s)); run `lineage package validate` for details", len(portability.Blockers))
