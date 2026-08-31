@@ -31,6 +31,25 @@ func NewPortabilityReport(report ValidateReport) PortabilityReport {
 		Warnings:                   append([]string{}, report.Notes...),
 		Blockers:                   append([]string{}, report.Errors...),
 	}
+
+	// InstructionFindings aren't part of report.Errors/Notes (see
+	// ValidateReport's doc comment - a SeverityBlock finding blocks Passed()
+	// exactly like an Errors entry, but the two are tracked separately so a
+	// finding keeps its category/path/reason instead of flattening into a
+	// plain string). Fold them in here too, so HasBlockers() stays the
+	// single, complete gate Export/Publish/`package export` already rely
+	// on - without this, a hard-stop instruction finding would report a
+	// clean "PASS" portability status while still failing Validate.
+	for _, f := range BlockingFindings(report.InstructionFindings) {
+		portability.Blockers = append(portability.Blockers, fmt.Sprintf("[%s] %s: %s", f.Category, f.Path, f.Reason))
+	}
+	for _, f := range WarningFindings(report.InstructionFindings) {
+		portability.Warnings = append(portability.Warnings, fmt.Sprintf("[%s] %s: %s", f.Category, f.Path, f.Reason))
+	}
+	for _, f := range UnscannedFindings(report.InstructionFindings) {
+		portability.Warnings = append(portability.Warnings, fmt.Sprintf("could not fully check %s: %s", f.Path, f.Reason))
+	}
+
 	if len(portability.Warnings) > 0 {
 		portability.Status = "WARN"
 	}

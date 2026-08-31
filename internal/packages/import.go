@@ -57,7 +57,7 @@ func Import(r io.Reader, destParent, asName string) (string, error) {
 		return "", err
 	}
 	if !report.Passed() {
-		return "", fmt.Errorf("imported package failed validation, refusing to import (%d error(s))", len(report.Errors))
+		return "", fmt.Errorf("imported package failed validation, refusing to import (%d error(s))", report.BlockingCount())
 	}
 
 	name := asName

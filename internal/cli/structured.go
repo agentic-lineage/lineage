@@ -34,6 +34,12 @@ type PackageReport struct {
 	Portability    *packages.PortabilityReport `yaml:"portability,omitempty"`
 	Notes          []string                    `yaml:"notes,omitempty"`
 	Errors         []string                    `yaml:"errors,omitempty"`
+	// InstructionFindings are ScanForInstructionRisk's results, computed
+	// for both validate and inspect (unlike Result, which stays
+	// validate-only - a finding is worth showing to a receiver deciding
+	// whether to enable a package even though inspect has no pass/fail
+	// concept of its own).
+	InstructionFindings []InstructionRiskReport `yaml:"instruction_findings,omitempty"`
 	// Result is only meaningful for validate ("pass"/"fail"); inspect
 	// performs no validation, so it leaves this empty and omitted.
 	Result string `yaml:"result,omitempty"`
@@ -42,6 +48,34 @@ type PackageReport struct {
 type PackageReportCapabilities struct {
 	FilesystemRead []string `yaml:"filesystem_read"`
 	Network        []string `yaml:"network"`
+}
+
+// InstructionRiskReport is one packages.InstructionFinding rendered for
+// structured output: plain strings instead of the packages package's typed
+// RiskCategory/Severity, so the YAML schema doesn't leak internal Go types.
+type InstructionRiskReport struct {
+	Path     string `yaml:"path"`
+	Category string `yaml:"category"`
+	Severity string `yaml:"severity"`
+	Reason   string `yaml:"reason"`
+	Excerpt  string `yaml:"excerpt,omitempty"`
+}
+
+func toInstructionRiskReports(findings []packages.InstructionFinding) []InstructionRiskReport {
+	if len(findings) == 0 {
+		return nil
+	}
+	out := make([]InstructionRiskReport, len(findings))
+	for i, f := range findings {
+		out[i] = InstructionRiskReport{
+			Path:     f.Path,
+			Category: string(f.Category),
+			Severity: string(f.Severity),
+			Reason:   f.Reason,
+			Excerpt:  f.Excerpt,
+		}
+	}
+	return out
 }
 
 // nonNil turns a nil slice into an empty one so the YAML encoder emits `[]`
@@ -58,7 +92,7 @@ func nonNil(values []string) []string {
 	return values
 }
 
-func inspectReport(pkg packages.Package) PackageReport {
+func inspectReport(pkg packages.Package, findings []packages.InstructionFinding) PackageReport {
 	return PackageReport{
 		Name:           pkg.Manifest.Name,
 		Version:        pkg.Manifest.Version,
@@ -76,6 +110,7 @@ func inspectReport(pkg packages.Package) PackageReport {
 			FilesystemRead: nonNil(pkg.Manifest.Capabilities.Filesystem.Read),
 			Network:        nonNil(pkg.Manifest.Capabilities.Network),
 		},
+		InstructionFindings: toInstructionRiskReports(findings),
 	}
 }
 
@@ -102,9 +137,10 @@ func validateReport(report packages.ValidateReport, discovered *packages.Package
 			FilesystemRead: nonNil(report.Manifest.Capabilities.Filesystem.Read),
 			Network:        nonNil(report.Manifest.Capabilities.Network),
 		},
-		Notes:  nonNil(report.Notes),
-		Errors: nonNil(report.Errors),
-		Result: result,
+		Notes:               nonNil(report.Notes),
+		Errors:              nonNil(report.Errors),
+		InstructionFindings: toInstructionRiskReports(report.InstructionFindings),
+		Result:              result,
 	}
 	portability := packages.NewPortabilityReport(report)
 	pr.Portability = &portability
