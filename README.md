@@ -1,6 +1,6 @@
 # Lineage
 
-Package and share Claude Code and Codex workflow environments.
+Package and share Claude Code, Codex, and Windsurf workflow environments.
 
 A reusable agent workflow usually depends on more than one prompt or skill:
 skills, workflow steps, agents, policies, references, setup files, declared
@@ -32,12 +32,14 @@ Use Lineage when you want to:
   deterministic `.tgz` archive.
 - Let receivers inspect package contents and declared capabilities before
   enabling the workflow locally.
-- Run the packaged workflow through Claude Code or Codex without rebuilding the
+- Run the packaged workflow through Claude Code, Codex, or Windsurf without rebuilding the
   environment by hand in each project.
 
 Lineage is provider-adjacent, not provider-owned. It prepares local files for
 the agent provider the receiver already uses; it does not replace Claude Code,
-Codex, or the user's agent account.
+Codex, Windsurf, or the user's agent account. Windsurf support is project-scoped
+and config/materialization-only: `lineage run windsurf` and its workflow form
+stage project files and exit without resolving or launching the Windsurf GUI.
 
 ## Install
 
@@ -76,6 +78,7 @@ lineage package validate ./resume-workflow
 lineage enable ./resume-workflow
 lineage run claude --dry-run
 lineage run codex --dry-run
+lineage run windsurf --dry-run
 ```
 
 Publish it to the Lineage registry:
@@ -184,8 +187,10 @@ what it would materialize before writing.
 
 - `lineage run claude --dry-run` previews Claude materialization.
 - `lineage run codex --dry-run` previews Codex materialization.
-- `lineage workflow run <workflow-name> <claude|codex> --dry-run` narrows the
-  launch plan to one exported workflow.
+- `lineage run windsurf --dry-run` previews Windsurf project materialization
+  without resolving a Windsurf binary.
+- `lineage workflow run <workflow-name> <claude|codex|windsurf> --dry-run`
+  narrows the plan to one exported workflow; Windsurf remains materialization-only.
 
 The current adapters focus on Claude, Codex, and Windsurf. The package shape
 stays plain so future adapters can use the same manifest, skills, workflows,

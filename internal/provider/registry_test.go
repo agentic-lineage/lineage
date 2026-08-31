@@ -31,7 +31,7 @@ func TestGetWindsurfProvider(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get(windsurf) error = %v", err)
 	}
-	if p.SkillsDir != filepath.Join(".windsurf", "rules") || p.ContextFile != ".windsurfrules" {
+	if p.SkillsDir != filepath.Join(".windsurf", "rules") || p.ContextFile != ".windsurfrules" || !p.MaterializeOnly {
 		t.Fatalf("Get(windsurf) = %#v, want project-scoped Windsurf paths", p)
 	}
 }

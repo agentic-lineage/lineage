@@ -77,6 +77,10 @@ func TestBuildPlanWindsurfDryRun(t *testing.T) {
 	if !strings.Contains(plan.DryRunString(), "provider: windsurf") {
 		t.Fatalf("DryRunString() = %q, want Windsurf provider", plan.DryRunString())
 	}
+	if !strings.Contains(plan.DryRunString(), "real_binary: none") ||
+		!strings.Contains(plan.DryRunString(), "launch: disabled (config/materialization only)") {
+		t.Fatalf("DryRunString() = %q, want materialization-only plan", plan.DryRunString())
+	}
 }
 
 func mustWrite(t *testing.T, path string, content string) {

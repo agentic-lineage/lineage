@@ -12,7 +12,7 @@ Lineage is a local runtime for distributing agent environment packages.
 - `lineage add <ref>` is the receiver shortcut for the registry path: resolve, download/import, inspect, confirm, and enable in one command. `lineage package pull` remains available when the receiver wants to fetch first and enable separately.
 - The runtime resolves enabled packages, builds a launch plan, and starts the selected provider through an explicit adapter boundary.
 - `lineage workflow run <workflow> <provider>` narrows materialization to the ordered steps declared by one workflow, while plain `lineage run <provider>` materializes the full enabled package set.
-- Provider shims let a normal command such as `claude`, `codex`, or `windsurf` enter the Lineage runtime first, then hand off to the real provider binary. Windsurf is config/materialization-only: its GUI is not launched by Lineage and global MCP configuration is not written.
+- Provider shims let a normal command such as `claude` or `codex` enter the Lineage runtime first, then hand off to the real provider binary. Windsurf is a known provider for project-scoped config/materialization only: it is not shimmed, its GUI is not launched by Lineage, and global MCP configuration is not written.
 
 ## Package Shape
 
