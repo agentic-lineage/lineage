@@ -21,6 +21,9 @@ func Install(home, lineageBinary string) error {
 	}
 
 	for _, p := range provider.Known() {
+		if p.MaterializeOnly {
+			continue
+		}
 		if err := writeShim(binDir, lineageBinary, p.Name, runtime.GOOS); err != nil {
 			return err
 		}

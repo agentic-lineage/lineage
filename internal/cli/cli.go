@@ -1197,6 +1197,9 @@ func runProvider(ctx context.Context, args []string, home string, stdin *bufio.R
 		fmt.Fprintln(stderr, err)
 		return err
 	}
+	if plan.ProviderPlan.MaterializeOnly {
+		return nil
+	}
 
 	if err := provider.Launch(plan.ProviderPlan); err != nil {
 		fmt.Fprintln(stderr, err)
@@ -1281,6 +1284,9 @@ func runWorkflow(args []string, home string, stdin *bufio.Reader, stdout, stderr
 		fmt.Fprintln(stderr, err)
 		return err
 	}
+	if providerPlan.MaterializeOnly {
+		return nil
+	}
 
 	if err := provider.Launch(providerPlan); err != nil {
 		fmt.Fprintln(stderr, err)
@@ -1296,6 +1302,12 @@ func workflowPlanString(wf packages.Workflow, pkg packages.Package, providerName
 	fmt.Fprintf(&b, "package: %s@%s\n", pkg.Manifest.Name, pkg.Manifest.Version)
 	fmt.Fprintf(&b, "provider: %s\n", providerName)
 	fmt.Fprintf(&b, "real_binary: %s\n", emptyValue(providerPlan.Binary))
+	fmt.Fprintf(&b, "args: %s\n", strings.Join(providerPlan.Args, " "))
+	if providerPlan.MaterializeOnly {
+		fmt.Fprintf(&b, "launch: disabled (config/materialization only)\n")
+	} else {
+		fmt.Fprintf(&b, "launch: enabled\n")
+	}
 	fmt.Fprintf(&b, "steps:\n")
 	for i, step := range wf.Steps {
 		fmt.Fprintf(&b, "  %d. %s\n", i+1, step)

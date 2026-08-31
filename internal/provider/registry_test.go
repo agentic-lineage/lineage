@@ -31,7 +31,7 @@ func TestGetClineProvider(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get(cline) error = %v", err)
 	}
-	if p.SkillsDir != ".clinerules" || p.ContextFile != filepath.Join(".clinerules", "lineage.md") {
+	if p.SkillsDir != ".clinerules" || p.ContextFile != filepath.Join(".clinerules", "lineage.md") || !p.MaterializeOnly {
 		t.Fatalf("Get(cline) = %#v, want project-scoped Cline paths", p)
 	}
 }

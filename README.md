@@ -185,8 +185,8 @@ what it would materialize before writing.
 - `lineage run claude --dry-run` previews Claude materialization.
 - `lineage run codex --dry-run` previews Codex materialization.
 - `lineage run cline --dry-run` previews Cline materialization.
-- `lineage workflow run <workflow-name> <claude|codex|cline> --dry-run` narrows the
-  launch plan to one exported workflow.
+- `lineage workflow run <workflow-name> <claude|codex|cline> --dry-run` previews the
+  ordered materialization plan; Cline is project-scoped and does not launch a CLI.
 
 The current adapters focus on Claude, Codex, and Cline. The package shape stays plain so
 future adapters can use the same manifest, skills, workflows, agents, policies,
@@ -204,9 +204,12 @@ providers:
     binary: /path/to/real/claude
   codex:
     binary: /path/to/real/codex
-  cline:
-    binary: /path/to/real/cline
 ```
+
+Cline is project-scoped and materialization-only. It writes `.clinerules/` and
+`.clinerules/lineage.md`, does not require a configured or PATH-resolved Cline
+binary, does not launch a Cline CLI or GUI, does not install a `cline` shim, and
+does not write global MCP settings.
 
 The first time `lineage run` would stage files for a provider, it shows what it
 is about to create or change and asks for confirmation. Pass `--yes`/`-y` to
@@ -239,7 +242,7 @@ lineage run codex --dry-run
 lineage run cline --dry-run
 lineage workflow run <workflow-name> <claude|codex|cline> [--dry-run] [--yes]
 
-lineage install-shims
+lineage install-shims                 # launchable providers only; not Cline
 lineage doctor
 lineage version
 ```

@@ -346,6 +346,29 @@ func TestRunApprovedMaterializes(t *testing.T) {
 	}
 }
 
+func TestRunClineMaterializesWithoutBinaryOrLaunch(t *testing.T) {
+	project, _ := setUpEnabledProject(t)
+	cfg, err := config.LoadProjectConfig(config.ProjectConfigPath(project))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Providers = map[string]config.Provider{}
+	if err := config.SaveProjectConfig(config.ProjectConfigPath(project), cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if err := Execute(nil, []string{"run", "cline", "--yes"}, nil, &stdout, &stderr); err != nil {
+		t.Fatalf("Cline run error = %v stderr=%s", err, stderr.String())
+	}
+	if _, err := os.Stat(filepath.Join(project, ".clinerules", "lineage.md")); err != nil {
+		t.Fatalf("expected Cline context materialization: %v", err)
+	}
+	if strings.Contains(stderr.String(), "binary") || strings.Contains(stdout.String(), "launch failed") {
+		t.Fatalf("Cline run attempted launch: stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+}
+
 func TestRunYesFlagSkipsPrompt(t *testing.T) {
 	project, _ := setUpEnabledProject(t)
 
@@ -816,6 +839,38 @@ func TestWorkflowRunMaterializesOnlyItsSteps(t *testing.T) {
 	}
 	if !strings.Contains(string(content), "Active workflow: review-flow") {
 		t.Fatalf("CLAUDE.md = %s, want the active workflow sequence", content)
+	}
+}
+
+func TestWorkflowRunClineMaterializesWithoutBinaryOrLaunch(t *testing.T) {
+	project, _ := setUpEnabledWorkflowProject(t)
+	cfg, err := config.LoadProjectConfig(config.ProjectConfigPath(project))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Providers = map[string]config.Provider{}
+	if err := config.SaveProjectConfig(config.ProjectConfigPath(project), cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if err := Execute(nil, []string{"workflow", "run", "review-flow", "cline", "--dry-run"}, nil, &stdout, &stderr); err != nil {
+		t.Fatalf("Cline workflow dry-run error = %v stderr=%s", err, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "real_binary: none") || !strings.Contains(stdout.String(), "launch: disabled (config/materialization only)") {
+		t.Fatalf("Cline workflow dry-run = %q, want materialization-only output", stdout.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if err := Execute(nil, []string{"workflow", "run", "review-flow", "cline", "--yes"}, nil, &stdout, &stderr); err != nil {
+		t.Fatalf("Cline workflow run error = %v stderr=%s", err, stderr.String())
+	}
+	content, err := os.ReadFile(filepath.Join(project, ".clinerules", "lineage.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(content), "Active workflow: review-flow") {
+		t.Fatalf("Cline context = %s, want active workflow", content)
 	}
 }
 

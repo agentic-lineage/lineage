@@ -23,7 +23,7 @@ func TestFileNameWindowsHasCmdExtension(t *testing.T) {
 	}
 }
 
-func TestInstallWritesShimForEveryKnownProvider(t *testing.T) {
+func TestInstallWritesShimsOnlyForLaunchableProviders(t *testing.T) {
 	home := t.TempDir()
 	if err := Install(home, "/usr/local/bin/lineage"); err != nil {
 		t.Fatalf("Install() error = %v", err)
@@ -34,6 +34,9 @@ func TestInstallWritesShimForEveryKnownProvider(t *testing.T) {
 		if _, err := os.Stat(path); err != nil {
 			t.Fatalf("expected shim for %s at %s: %v", name, path, err)
 		}
+	}
+	if _, err := os.Stat(filepath.Join(home, "bin", FileName("cline", runtime.GOOS))); !os.IsNotExist(err) {
+		t.Fatalf("expected no shim for materialization-only Cline, stat error = %v", err)
 	}
 }
 
