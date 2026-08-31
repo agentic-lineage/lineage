@@ -4,6 +4,12 @@ All notable changes to Lineage will be documented here.
 
 ## Unreleased
 
+- `lineage doctor` now validates materialize state staleness (warning, since
+  it's regenerable via `lineage run`), `.lineage/graph.json` parseability,
+  and snapshot-store referential integrity — every object a snapshot
+  manifest references actually present under `~/.lineage/objects/` (both
+  fatal, since neither is automatically recoverable) — per the
+  regenerable-vs-authoritative classification in ADR 0015 (#200).
 - Initial local agent package runtime scaffold.
 - Refreshed public-facing documentation for the current registry, `lineage add`,
   workflow, inspect/list/doctor, and bootstrap-prompt surfaces; added a public

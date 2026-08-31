@@ -314,3 +314,57 @@ func TestMaterializeDetectsCorruptObjectBeforeWriting(t *testing.T) {
 		t.Fatalf("Materialize() wrote to destDir despite a corrupt object; destDir stat err = %v, want IsNotExist", err)
 	}
 }
+
+func TestAllManifestIDsEmptyBeforeAnyCreate(t *testing.T) {
+	home := t.TempDir()
+	ids, err := AllManifestIDs(home)
+	if err != nil {
+		t.Fatalf("AllManifestIDs() error = %v", err)
+	}
+	if len(ids) != 0 {
+		t.Fatalf("AllManifestIDs() = %v, want none before any Create call", ids)
+	}
+}
+
+func TestAllManifestIDsListsEveryCreatedSnapshot(t *testing.T) {
+	home := t.TempDir()
+	_, id1, err := Create(home, buildTestPackage(t, "agent-pack"))
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	_, id2, err := Create(home, buildTestPackage(t, "other-pack"))
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	ids, err := AllManifestIDs(home)
+	if err != nil {
+		t.Fatalf("AllManifestIDs() error = %v", err)
+	}
+	if len(ids) != 2 {
+		t.Fatalf("AllManifestIDs() = %v, want exactly the 2 created manifests", ids)
+	}
+	found := map[ObjectID]bool{ids[0]: true, ids[1]: true}
+	if !found[id1] || !found[id2] {
+		t.Fatalf("AllManifestIDs() = %v, want it to include %s and %s", ids, id1, id2)
+	}
+}
+
+func TestAllManifestIDsDedupesIdenticalSnapshots(t *testing.T) {
+	home := t.TempDir()
+	dir := buildTestPackage(t, "agent-pack")
+	if _, _, err := Create(home, dir); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if _, _, err := Create(home, dir); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	ids, err := AllManifestIDs(home)
+	if err != nil {
+		t.Fatalf("AllManifestIDs() error = %v", err)
+	}
+	if len(ids) != 1 {
+		t.Fatalf("AllManifestIDs() = %v, want identical content deduped to one manifest", ids)
+	}
+}

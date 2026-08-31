@@ -1343,11 +1343,16 @@ func runInstallShims(home string, stdout, stderr io.Writer) error {
 }
 
 // runDoctor sanity-checks a Lineage setup: project config validity, shim
-// PATH placement, and provider binary resolution. It fails (non-zero exit)
-// only for things that are actually broken (a project config that doesn't
-// parse, an enabled ref that no longer resolves); everything else that's
+// PATH placement, provider binary resolution, materialize state, the local
+// lineage graph, and snapshot-store integrity. It fails (non-zero exit)
+// only for things that are actually broken and not automatically
+// recoverable (a project config that doesn't parse, an enabled ref that no
+// longer resolves, a graph.json or snapshot manifest that's corrupt or
+// missing referenced content — docs/decisions/0015 classifies both as
+// authoritative, with no automatic regeneration); everything else that's
 // merely ambiguous-but-working (multiple provider binary candidates, a shim
-// directory not on PATH) is a warning, printed but not fatal.
+// directory not on PATH) or safely regenerable (stale materialize state) is
+// a warning, printed but not fatal.
 func runDoctor(home string, stdout, stderr io.Writer) error {
 	broken := false
 
@@ -1364,6 +1369,37 @@ func runDoctor(home string, stdout, stderr io.Writer) error {
 			broken = true
 		} else {
 			fmt.Fprintf(stdout, "enabled packages: OK (%d enabled)\n", len(found.Config.EnabledPackages))
+		}
+
+		for _, p := range provider.Known() {
+			hasState, err := materialize.HasState(found.Root, p.Name)
+			if err != nil {
+				fmt.Fprintf(stdout, "materialize state (%s): WARN - could not check %s: %v\n", p.Name, materialize.StatePath(found.Root, p.Name), err)
+				continue
+			}
+			if !hasState {
+				continue
+			}
+			missing, err := materialize.DiagnoseState(found.Root, p.Name)
+			if err != nil {
+				fmt.Fprintf(stdout, "materialize state (%s): WARN - %s is stale or unreadable (%v); run `lineage run %s` to regenerate it\n", p.Name, materialize.StatePath(found.Root, p.Name), err, p.Name)
+				continue
+			}
+			if len(missing) > 0 {
+				fmt.Fprintf(stdout, "materialize state (%s): WARN - references %d skill dir(s) no longer on disk; run `lineage run %s` to regenerate it:\n", p.Name, len(missing), p.Name)
+				for _, rel := range missing {
+					fmt.Fprintf(stdout, "    %s\n", rel)
+				}
+				continue
+			}
+			fmt.Fprintf(stdout, "materialize state (%s): OK\n", p.Name)
+		}
+
+		if records, err := graph.Load(found.Root); err != nil {
+			fmt.Fprintf(stdout, "local lineage graph: FAIL - %v\n", err)
+			broken = true
+		} else {
+			fmt.Fprintf(stdout, "local lineage graph: OK (%d record(s))\n", len(records))
 		}
 	} else if errors.Is(err, config.ErrProjectConfigNotFound) {
 		fmt.Fprintln(stdout, "project config: not inside a Lineage project (skipping enabled-package checks)")
@@ -1402,6 +1438,32 @@ func runDoctor(home string, stdout, stderr io.Writer) error {
 		winnerIdx := pathIndexOf(pathEntries, filepath.Dir(candidates[0]))
 		if winnerIdx != -1 && winnerIdx < shimIdx {
 			fmt.Fprintf(stdout, "provider %s: WARN - the real binary at %s comes before the shim directory on PATH, so the shim never takes effect for this provider\n", p.Name, candidates[0])
+		}
+	}
+
+	if manifestIDs, err := snapshot.AllManifestIDs(home); err != nil {
+		fmt.Fprintf(stdout, "snapshot store: FAIL - could not list snapshot manifests: %v\n", err)
+		broken = true
+	} else {
+		snapshotProblems := 0
+		for _, id := range manifestIDs {
+			m, err := snapshot.LoadManifest(home, id)
+			if err != nil {
+				fmt.Fprintf(stdout, "snapshot store: FAIL - manifest %s is unreadable or corrupt: %v\n", id, err)
+				snapshotProblems++
+				continue
+			}
+			for _, f := range m.Files {
+				if err := snapshot.VerifyObject(home, f.Object); err != nil {
+					fmt.Fprintf(stdout, "snapshot store: FAIL - manifest %s (%s@%s) references missing or corrupt object for %s: %v\n", id, m.Name, m.Version, f.Path, err)
+					snapshotProblems++
+				}
+			}
+		}
+		if snapshotProblems > 0 {
+			broken = true
+		} else {
+			fmt.Fprintf(stdout, "snapshot store: OK (%d manifest(s))\n", len(manifestIDs))
 		}
 	}
 
