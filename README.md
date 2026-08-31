@@ -115,12 +115,32 @@ See
 [docs/decisions/0012-v1-distribution-contract-and-receiver-activation.md](docs/decisions/0012-v1-distribution-contract-and-receiver-activation.md)
 for the registry structure.
 
+That same exact-ref form is also how you move a project back to a previous
+version; there is no separate `rollback` command yet
+([#122](https://github.com/agentic-lineage/lineage/issues/122)), because
+pinning already covers it. If that version is not already present locally,
+`lineage add` pulls it and then enables it for the current project.
+
+There is no way to remove a published version yet. The planned V1 behavior
+([#123](https://github.com/agentic-lineage/lineage/issues/123)) is to yank a
+version: hide it from the package directory and from bare-name latest
+resolution behind a tombstone, while leaving it addressable by exact version
+for anyone who already depends on it.
+
 Published packages are browsable at
 [agenticlineage.vercel.app/packages](https://agenticlineage.vercel.app/packages).
 A package detail page includes the package version, digest, publisher, raw
 archive download, and a copy-paste bootstrap prompt for someone who has never
 installed Lineage before. The canonical bootstrap prompt lives in
 [docs/bootstrap-prompt.md](docs/bootstrap-prompt.md).
+
+The production registry is served by the Lineage website API and currently
+stores package metadata/aggregate metrics in Supabase Postgres with immutable
+archives in a private Supabase Storage bucket. Publisher identity is still
+verified through GitHub (`lineage login` or `LINEAGE_PUBLISH_TOKEN` with
+`read:user`), and the original GitHub Releases registry remains the migration
+source and rollback path while the Supabase-backed registry is exercised in
+production.
 
 ## Sharing A `.tgz` Archive
 

@@ -12,6 +12,8 @@ check these surfaces before calling the docs fresh.
   flow.
 - `CHANGELOG.md`: release history and complete behavior notes.
 - `docs/architecture.md`: system boundaries and trust model.
+- `docs/safety.md`: canonical safety model - what each command checks, what's
+  a warning vs. a block, and what's explicitly not implemented yet.
 - `docs/bootstrap-prompt.md`: canonical copy-paste prompt embedded by package
   pages.
 - `docs/guides/`: search-targeted explanations for package concepts and
@@ -24,12 +26,15 @@ check these surfaces before calling the docs fresh.
 ## Public Surfaces To Sync
 
 - Website homepage: should summarize the current product surface, including the
-  registry, package pages, `lineage add`, and provider run/preview paths.
+  Supabase-backed registry, package pages, `lineage add`, and provider
+  run/preview paths.
 - Website SEO files: `robots.txt`, `sitemap.xml`, `sitemap.md`, `llms.txt`,
   canonicals, structured data, and Open Graph/Twitter metadata should stay in
   sync with current routes and package registry data.
-- `/packages`: should describe the registry read path and display package
-  provider compatibility and declared capabilities when available.
+- `/packages`: should describe the registry read path, use the paginated
+  `/api/packages` response, and display package provider compatibility,
+  declared capabilities, publisher, digest-adjacent trust signals, and
+  aggregate usage metrics when available.
 - `/packages/<name>`: should show the latest resolved package version, digest,
   publisher, direct pull command, archive download, bootstrap prompt,
   page-specific canonical/OG metadata, and package-specific structured data.
@@ -52,5 +57,9 @@ check these surfaces before calling the docs fresh.
 - Provider compatibility and capabilities currently depend on registry fields
   being published and rendered end to end. If only the CLI side has landed,
   public copy should say that website rendering is pending.
+- Registry storage copy should describe Supabase as the active production store
+  and GitHub as publisher identity plus rollback/backfill context. If the
+  website storage adapter changes again, update README, architecture, ADR 0012,
+  public docs, package pages, and the Wiki together.
 - Release/versioning policy lives in the repo and should be linked from
   contributor docs once the release-tracking PR lands.

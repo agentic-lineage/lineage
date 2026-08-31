@@ -11,6 +11,7 @@ Canonical links:
 - Website and registry: https://agenticlineage.vercel.app/
 - Package directory: https://agenticlineage.vercel.app/packages
 - Install: https://agenticlineage.vercel.app/install.sh
+- Safety model: https://github.com/agentic-lineage/lineage/blob/develop/docs/safety.md
 - Architecture: https://github.com/agentic-lineage/lineage/blob/develop/docs/architecture.md
 - What is a Lineage package: https://github.com/agentic-lineage/lineage/blob/develop/docs/guides/lineage-package.md
 - How to share Claude Code and Codex workflows: https://github.com/agentic-lineage/lineage/blob/develop/docs/guides/share-agent-workflows.md

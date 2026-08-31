@@ -33,6 +33,12 @@ lineage login
 lineage package publish ./resume-workflow
 ```
 
+The registry verifies your GitHub login, claims the package name for that
+verified publisher on first publish, and stores immutable package archives
+behind the Lineage website API. To publish a new version, bump `version` in
+`lineage.yaml` and publish again; republishing the same `name@version` with a
+different digest is rejected.
+
 Or share a deterministic archive:
 
 ```bash
@@ -46,6 +52,10 @@ For a published package, use `lineage add`:
 ```bash
 lineage add resume-workflow
 ```
+
+The package ref can be a bare name, which resolves to the latest registry
+version, or an exact ref such as `resume-workflow@0.2.0`. Pull/add verifies the
+registry digest against the downloaded archive before keeping it locally.
 
 For a local archive, import and enable explicitly:
 

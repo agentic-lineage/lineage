@@ -130,7 +130,5 @@ func TestWriteFileSetsPermissions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm() != 0o755 {
-		t.Errorf("mode = %v, want 0755", info.Mode().Perm())
-	}
+	assertWriteFilePermissions(t, info.Mode())
 }

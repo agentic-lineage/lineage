@@ -1,8 +1,10 @@
 package materialize
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -115,6 +117,9 @@ func TestApplyStagesSkillsAndWritesContextFile(t *testing.T) {
 // replicated into the receiver's project, potentially leaving
 // world-writable files behind on a multi-user machine.
 func TestApplyCapsStagedFilePermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows chmod does not expose POSIX group/other write bits, so the 0o755 cap has no equivalent FileMode assertion")
+	}
 	withUmask0(func() {
 		root := t.TempDir()
 		pkg := buildTestPackage(t, "loose-perms-pack", "loose")
@@ -136,9 +141,7 @@ func TestApplyCapsStagedFilePermissions(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected staged skill at %s: %v", staged, err)
 		}
-		if info.Mode().Perm()&0o022 != 0 {
-			t.Errorf("staged file mode = %v, want no group/other write bit (source was 0o777, umask forced to 0 so the OS can't mask this for us)", info.Mode().Perm())
-		}
+		assertNoLooseWriteBits(t, info.Mode())
 	})
 }
 
@@ -538,8 +541,13 @@ func TestNeedsApprovalDefaultsMissingSchemaToCurrent(t *testing.T) {
 		t.Fatal(err)
 	}
 	rel := filepath.Join(adapter.SkillsDir, pkg.Manifest.Name+"-"+pkg.Skills[0])
-	legacy := `{"skill_dirs":["` + filepath.ToSlash(rel) + `"]}`
-	if err := os.WriteFile(path, []byte(legacy), 0o644); err != nil {
+	legacy, err := json.Marshal(struct {
+		SkillDirs []string `json:"skill_dirs"`
+	}{SkillDirs: []string{rel}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, legacy, 0o644); err != nil {
 		t.Fatal(err)
 	}
 
