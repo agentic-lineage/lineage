@@ -41,7 +41,7 @@ A package with any blocking error fails validation and refuses to export/publish
 
 ## What `lineage inspect` Shows
 
-`lineage inspect <ref>` resolves a package (project path, user id, or workspace id) and shows its manifest, discovered skills/workflows/agents/policies/references, content digest, and declared capabilities — without enabling it or writing anything. This is the point in the lifecycle meant for a receiver to actually read what they're about to enable, before they type `lineage enable`.
+`lineage inspect <ref>` resolves a package (project path, user id, or workspace id) and shows its manifest, discovered skills/workflows/agents/policies/references, content digest, and declared capabilities — without enabling or writing anything. This is the point in the lifecycle meant for a receiver to actually read what they're about to enable, before they type `lineage enable`.
 
 ## What `publish`, `pull`, And `import` Protect
 

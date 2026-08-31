@@ -2,7 +2,7 @@ name: PR Policy
 
 on:
   pull_request:
-    branches: [develop, master]
+    branches: [develop, main]
     types: [opened, edited, reopened, synchronize, ready_for_review]
 
 permissions:
@@ -18,6 +18,7 @@ jobs:
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
           PR_BASE: ${{ github.event.pull_request.base.ref }}
+          PR_HEAD: ${{ github.event.pull_request.head.ref }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           python3 - <<'PY'
@@ -29,11 +30,12 @@ jobs:
 
           body = os.environ.get("PR_BODY") or ""
           base = os.environ.get("PR_BASE") or ""
+          head = os.environ.get("PR_HEAD") or ""
           repo = os.environ.get("GITHUB_REPOSITORY") or ""
           errors = []
 
-          if base not in {"develop", "master"}:
-              errors.append("PR must target develop, except release-tracked promotions may target master.")
+          if base not in {"develop", "main"}:
+              errors.append("PR must target develop, except release-tracked promotions may target main.")
 
           linked_issue = re.search(r"(?im)\b(closes|fixes|resolves)\s+#\d+\b", body)
           maintainer_housekeeping = re.search(r"(?im)\bmaintainer housekeeping\b", body)
@@ -80,27 +82,30 @@ jobs:
           def has_bullet_text(text):
               return bool(re.search(r"(?m)^-\s+\S+", text))
 
-          if base == "master":
+          if base == "main":
               release = section_text("Release Tracking")
               if not release:
-                  errors.append("PRs targeting master must include a Release Tracking section.")
+                  errors.append("PRs targeting main must include a Release Tracking section.")
               else:
-                  is_release = has_checked_item(release, "Release-worthy master promotion")
+                  is_release = has_checked_item(release, "Release-worthy main promotion")
                   is_housekeeping = has_checked_item(release, "Non-release housekeeping")
 
                   if is_release == is_housekeeping:
-                      errors.append("Master PRs must check exactly one release-tracking mode: release-worthy promotion or non-release housekeeping.")
+                      errors.append("Main PRs must check exactly one release-tracking mode: release-worthy promotion or non-release housekeeping.")
 
                   if is_housekeeping:
                       reason = subsection_text(release, "Non-release housekeeping reason")
                       if not has_bullet_text(reason):
-                          errors.append("Non-release housekeeping master PRs must explain why no release tag is needed.")
+                          errors.append("Non-release housekeeping main PRs must explain why no release tag is needed.")
 
                   if is_release:
+                      if head != "develop":
+                          errors.append("Release-worthy PRs targeting main must originate from develop.")
+
                       planned_version = subsection_text(release, "Planned version")
                       version_match = re.search(r"\bv\d+\.\d+\.\d+\b", planned_version)
                       if not version_match:
-                          errors.append("Release-worthy master PRs must declare a planned SemVer tag like `v0.4.0`.")
+                          errors.append("Release-worthy main PRs must declare a planned SemVer tag like `v0.4.0`.")
                       else:
                           version = version_match.group(0)
                           tag_url = f"https://api.github.com/repos/{repo}/git/ref/tags/{version}"
@@ -115,7 +120,7 @@ jobs:
 
                       release_classification = subsection_text(release, "Release classification")
                       if not re.search(r"\b(patch|minor|major)\b", release_classification):
-                          errors.append("Release-worthy master PRs must classify the version bump as patch, minor, or major.")
+                          errors.append("Release-worthy main PRs must classify the version bump as patch, minor, or major.")
 
                       for heading in [
                           "What changed",
@@ -127,8 +132,10 @@ jobs:
                           if not has_bullet_text(content):
                               errors.append(f"Release notes must include at least one bullet for '{heading}'.")
 
-                      if not has_checked_item(release, "Create and push an annotated SemVer tag after merge to `master`."):
-                          errors.append("Release-worthy master PRs must confirm the post-merge annotated tag plan.")
+                      if not has_checked_item(release, "Create and push an annotated SemVer tag after merge to `main`."):
+                          errors.append("Release-worthy main PRs must confirm the post-merge annotated tag plan.")
+                      if not has_checked_item(release, "Sync the resulting `main` merge commit back into `develop`."):
+                          errors.append("Release-worthy main PRs must confirm the post-merge main-to-develop sync-back plan.")
 
           if errors:
               print("PR policy failed:")
