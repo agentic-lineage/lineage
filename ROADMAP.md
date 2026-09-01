@@ -20,7 +20,8 @@ and pull-request state remains the source of truth for individual tasks.
   provider-neutral launch planning.
 - The August consolidation pass: package-name validation, digest and secret
   scanning fixes, atomic writes, safe archive extraction, and confirmation-flow
-  fixes. The remaining accepted concurrency limitation stays tracked in #170.
+  fixes. The remaining concurrency limitation is explicitly documented as an
+  accepted single-user CLI tradeoff (#170, #231).
 - Windows CI and the checked-in author-to-receiver end-to-end fixture (#174,
   #207, #211).
 - The `.lineage` container specification, lineage graph, and content-addressed

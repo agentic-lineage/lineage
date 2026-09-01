@@ -14,7 +14,7 @@ The README, `SECURITY.md`, and the `lineage-package-security-guardrails` skill a
 
 ## Consequences
 
-The scan is precise (low false-positive rate) rather than exhaustive — it will not catch every possible secret shape, and that's an accepted tradeoff for v1, not an oversight. It's also trivially extensible: adding a new pattern is a one-line change to a reviewable list, not a retrain or a new subsystem. `lineage package validate` and the future export gate (Phase 3) both consume this as one input among several, not as a claim of complete secret safety.
+The scan is precise (low false-positive rate) rather than exhaustive — it will not catch every possible secret shape, and that's an accepted tradeoff for v1, not an oversight. It's also trivially extensible: adding a new pattern is a one-line change to a reviewable list, not a retrain or a new subsystem. `lineage package validate`, export, import, and publish consume this as one input among several, not as a claim of complete secret safety.
 
 ## Follow-Up
 

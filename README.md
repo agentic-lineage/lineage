@@ -220,24 +220,23 @@ lineage init user
 lineage init workspace <name>
 
 lineage package init <name>
-lineage package validate <path>
+lineage package validate <path> [--yaml]
 lineage package export <path> [-o file.tgz]
 lineage package import <file.tgz> [--as name]
 
 lineage add <package-ref> [--yes]
-lineage package publish <path>
+lineage package publish <path> [--yes]
 lineage package pull <package-ref> [--as name]
 lineage login
 lineage logout
 lineage whoami
 
-lineage enable <package-path-or-id>
-lineage disable <package-path-or-id>
+lineage enable <package-path-or-id> [--yes]
+lineage disable <package-path-or-id> [--yes]
 lineage list
-lineage inspect <package-path-or-id>
-lineage run claude --dry-run
-lineage run codex --dry-run
-lineage workflow run <workflow-name> <claude|codex> [--dry-run] [--yes]
+lineage inspect <package-path-or-id> [--yaml]
+lineage run <claude|codex> [--dry-run] [--yes] [-- provider args...]
+lineage workflow run <workflow-name> <claude|codex> [--dry-run] [--yes] [-- provider args...]
 
 lineage install-shims
 lineage doctor
