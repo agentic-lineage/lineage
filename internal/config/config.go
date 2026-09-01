@@ -121,6 +121,12 @@ func LoadProjectConfig(path string) (ProjectConfig, error) {
 }
 
 func SaveProjectConfig(path string, cfg ProjectConfig) error {
+	// ProjectConfig values constructed by callers before schema versioning have
+	// the Go zero value here. Current writers must never persist an explicit
+	// schema zero, because loaders correctly reject it as unsupported.
+	if cfg.Schema == 0 {
+		cfg.Schema = CurrentConfigSchema
+	}
 	data, err := yaml.Marshal(cfg)
 	if err != nil {
 		return fmt.Errorf("encode project config: %w", err)
