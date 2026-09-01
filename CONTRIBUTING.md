@@ -17,6 +17,7 @@ No network access is required: Lineage's one dependency (`gopkg.in/yaml.v3`) is 
 - Treat package contents as untrusted input.
 - Keep manifests deterministic and human-readable.
 - Do not add code or docs that encourage sharing secrets, credentials, provider login state, or private machine state.
+- Treat source-workspace inventory as evidence: do not execute source scripts or turn ambiguous input into asserted behavior.
 - Add tests for package discovery, config changes, launch planning, and any safety checks you touch.
 
 ## The `.lineage` Directory
@@ -62,3 +63,7 @@ For changes that affect install, publishing, receiver activation, setup prompts,
 provider compatibility, or safety wording, check
 [docs/public-docs-sync.md](docs/public-docs-sync.md) and call out any website,
 Wiki, package-page, or Discussion sync still needed.
+
+For inventory or behavioral-compilation changes, also update the
+[compilation guide](docs/guides/compiling-existing-workspaces.md) and keep the
+evidence/interpretation boundary explicit.

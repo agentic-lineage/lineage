@@ -71,7 +71,9 @@ A package's manifest can carry an optional `capabilities` block (`filesystem.rea
 `internal/packages.ScanForSecrets` checks a small, explicit, documented set of signals (ADR 0009):
 
 - Denylisted filenames: `.env`, `.npmrc`, SSH private key names, `.pem`/`.key`/`.pfx`/`.p12`.
-- A short list of high-confidence content patterns: private key headers, AWS access key ID shape, GitHub token prefixes.
+- A short list of high-confidence content patterns: private key headers, AWS
+  access key ID shapes, GitHub token prefixes, and Google API keys using the
+  `AIza` prefix.
 
 Findings report a file path and a human-readable reason only — the matched value itself is never included, so scan output is always safe to print or log. This is a **precise, not exhaustive** scan by design: it will not catch every possible secret shape (custom token formats, secrets embedded in prose, anything that doesn't match the documented list). It's one input `validate`/`export`/`import` consume, not a claim of complete secret safety. Do not treat a clean scan as proof a package contains no sensitive data — see [What Package Authors Should Never Publish](#what-package-authors-should-never-publish) below.
 
