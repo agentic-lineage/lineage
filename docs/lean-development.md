@@ -30,7 +30,7 @@ A milestone is done when its issues prove the goal works well enough to trust, n
 
 Stable releases are cut from completed or explicitly bounded goal milestones.
 See [Release And Versioning Policy](release-versioning.md) for how milestone
-completion maps to `master` promotions and SemVer tags.
+completion maps to `main` promotions and SemVer tags.
 
 ## Issue Shape
 
