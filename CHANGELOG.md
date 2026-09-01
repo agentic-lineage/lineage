@@ -4,6 +4,9 @@ All notable changes to Lineage will be documented here.
 
 ## Unreleased
 
+- Reject explicit schema zero in project configuration and materialization
+  state while preserving the legacy default for files with no schema field.
+
 ## [1.1.1] - 2026-09-01
 
 ### Added

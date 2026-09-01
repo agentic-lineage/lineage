@@ -447,3 +447,21 @@ func TestNeedsApprovalRejectsUnsupportedSchema(t *testing.T) {
 		t.Fatal("NeedsApproval() error = nil, want error for unsupported schema")
 	}
 }
+
+func TestNeedsApprovalRejectsExplicitZeroSchema(t *testing.T) {
+	root := t.TempDir()
+	pkg := buildTestPackage(t, "review-pack", "review")
+	adapter := provider.Provider{Name: "claude", SkillsDir: filepath.Join(".claude", "skills"), ContextFile: "CLAUDE.md"}
+
+	path := statePath(root, "claude")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(`{"schema":0,"skill_dirs":[]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := NeedsApproval(root, adapter, []packages.Package{pkg}); err == nil {
+		t.Fatal("NeedsApproval() error = nil, want error for explicit schema zero")
+	}
+}
