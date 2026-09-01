@@ -47,14 +47,22 @@ jobs:
               body,
           )
           tests_text = relevant_tests.group(1).strip() if relevant_tests else ""
-          has_test_case = bool(re.search(r"(?m)^-\s+\S+", tests_text))
 
           no_test_reason = re.search(
               r"(?is)If this PR does not need automated tests, explain why:\s*(.+?)(?:## Release Tracking|## Notes For Reviewers|\Z)",
               body,
           )
           reason_text = no_test_reason.group(1).strip() if no_test_reason else ""
-          has_no_test_reason = bool(re.search(r"(?m)^-\s+\S+", reason_text))
+
+          def meaningful_bullet_text(text):
+              for match in re.finditer(r"(?m)^-\s+(.+?)\s*$", text):
+                  value = match.group(1).strip().lower().rstrip(".")
+                  if value and value not in {"none", "none yet", "n/a", "not applicable", "tbd"}:
+                      return True
+              return False
+
+          has_test_case = meaningful_bullet_text(tests_text)
+          has_no_test_reason = meaningful_bullet_text(reason_text)
 
           command_block = re.search(r"(?is)```text\s*(.+?)```", body)
           commands = command_block.group(1).strip() if command_block else ""
@@ -81,6 +89,26 @@ jobs:
 
           def has_bullet_text(text):
               return bool(re.search(r"(?m)^-\s+\S+", text))
+
+          merge_method = section_text("Merge Method")
+          if not merge_method:
+              errors.append("PR must include a Merge Method section.")
+          else:
+              ordinary_squash = has_checked_item(merge_method, "Squash merge for an ordinary PR into `develop`.")
+              release_merge = has_checked_item(merge_method, "Merge commit for a release promotion into `main`.")
+              sync_merge = has_checked_item(merge_method, "Merge commit for a `main` to `develop` sync-back.")
+              checked_merge_methods = sum([ordinary_squash, release_merge, sync_merge])
+
+              if checked_merge_methods != 1:
+                  errors.append("PR must check exactly one Merge Method option.")
+              elif base == "develop":
+                  if head == "chore/sync-main-into-develop":
+                      if not sync_merge:
+                          errors.append("main-to-develop sync PRs must choose the merge-commit sync-back option.")
+                  elif not ordinary_squash:
+                      errors.append("Ordinary PRs targeting develop must choose squash merge.")
+              elif base == "main" and not release_merge:
+                  errors.append("PRs targeting main must choose the release-promotion merge commit option.")
 
           if base == "main":
               release = section_text("Release Tracking")
