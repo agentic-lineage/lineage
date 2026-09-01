@@ -43,8 +43,8 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           git checkout -B "$SYNC_BRANCH" origin/main
-          git -c "http.extraheader=AUTHORIZATION: bearer ${GH_TOKEN}" \
-            push --force-with-lease origin "$SYNC_BRANCH"
+          gh auth setup-git
+          git push --force-with-lease origin "$SYNC_BRANCH"
 
           title="chore: sync main back into develop"
           body="$(cat <<'BODY'
