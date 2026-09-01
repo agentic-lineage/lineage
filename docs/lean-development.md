@@ -52,6 +52,19 @@ Labels should stay minimal:
 
 Avoid creating many area labels. The milestone should explain the goal, and the project board should show workflow status.
 
+## Triage
+
+Maintainers own priority. Issue templates may add `needs-triage`, but contributors should not choose P0/P1/P2 themselves.
+
+After assessment, remove `needs-triage` and use the project board for:
+
+- `Priority`: `P0` release/security/correctness blocker, `P1` active near-term product direction, `P2` accepted roadmap work, or blank/backlog when valid but unsequenced.
+- `Readiness`: ready, blocked, deferred, or needs decision.
+- `Dependencies/blockers`: linked issues or PRs that must land first.
+- `Milestone`: the goal milestone the issue advances, when applicable.
+
+Keep P1 deliberately small so it reflects the work that should actually compete for maintainer attention.
+
 ## Pull Requests
 
 Every PR should:
