@@ -44,3 +44,16 @@ jobs:
         with:
           name: coverage-${{ matrix.os }}
           path: coverage.out
+
+  # Keep a stable check name for branch protection while preserving the
+  # per-platform matrix results above for diagnostics.
+  go-required:
+    name: Go
+    needs: go
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require all Go matrix jobs to pass
+        env:
+          MATRIX_RESULT: ${{ needs.go.result }}
+        run: test "$MATRIX_RESULT" = "success"
