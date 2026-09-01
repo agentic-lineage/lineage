@@ -191,6 +191,10 @@ The current adapters focus on Claude and Codex. The package shape stays plain so
 future adapters can use the same manifest, skills, workflows, agents, policies,
 references, and setup material.
 
+For the contributor-facing work to compile an existing agent workspace into
+those portable artifacts, see
+[Compiling Existing Workspaces](docs/guides/compiling-existing-workspaces.md).
+
 Project configuration lives at `.lineage/config.yaml`.
 
 ```yaml
@@ -269,6 +273,7 @@ lineage enable resume-workflow
 
 - [What is a Lineage package?](docs/guides/lineage-package.md)
 - [How to share Claude Code and Codex workflows](docs/guides/share-agent-workflows.md)
+- [Compiling an existing agent workspace](docs/guides/compiling-existing-workspaces.md)
 - [Architecture and trust model](docs/architecture.md)
 - [Public docs and discoverability checklist](docs/discoverability.md)
 

@@ -4,6 +4,12 @@ All notable changes to Lineage will be documented here.
 
 ## Unreleased
 
+- Added deterministic, read-only source-workspace inventory for the workflow
+  compilation pipeline (#203). It classifies files, records content digests,
+  and preserves literal Markdown citation evidence without executing source
+  files.
+- Secret scanning now blocks Google API-key-shaped content (`AIza…`) alongside
+  the existing high-confidence patterns (#229).
 - Initial local agent package runtime scaffold.
 - Refreshed public-facing documentation for the current registry, `lineage add`,
   workflow, inspect/list/doctor, and bootstrap-prompt surfaces; added a public

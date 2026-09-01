@@ -10,7 +10,7 @@ The README, `SECURITY.md`, and the `lineage-package-security-guardrails` skill a
 
 ## Decision
 
-`internal/packages.ScanForSecrets` checks a small, explicit, documented set of signals: denylisted filenames (`.env`, `.npmrc`, SSH private key names, `.pem`/`.key`/`.pfx`/`.p12`) and a short list of high-confidence content patterns (private key headers, AWS access key ID shape, GitHub token prefixes). Findings report a file path and a human-readable reason only — the matched value itself is never included in a finding, so scan output is always safe to print or log.
+`internal/packages.ScanForSecrets` checks a small, explicit, documented set of signals: denylisted filenames (`.env`, `.npmrc`, SSH private key names, `.pem`/`.key`/`.pfx`/`.p12`) and a short list of high-confidence content patterns (private key headers, AWS access key ID shapes, GitHub token prefixes, and Google API keys using the `AIza` prefix). Findings report a file path and a human-readable reason only — the matched value itself is never included in a finding, so scan output is always safe to print or log.
 
 ## Consequences
 

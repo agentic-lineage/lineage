@@ -118,7 +118,10 @@ type Citation struct {
 	// prose phrased the reference.
 	AsWritten string `json:"as_written"`
 
-	Snippet string `json:"snippet"` // preview of the source line; always contains AsWritten
+	// Snippet is a bounded preview of the source line. It contains AsWritten
+	// when the match is shorter than maxSnippetLen, which is true for realistic
+	// references. ToPath, AsWritten, Line, and Column remain authoritative.
+	Snippet string `json:"snippet"`
 }
 
 // maxSnippetLen bounds Citation.Snippet so a citation is always small and

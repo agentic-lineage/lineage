@@ -10,6 +10,8 @@ check these surfaces before calling the docs fresh.
 
 - `README.md`: current install, author, receiver, registry, and day-to-day CLI
   flow.
+- `ROADMAP.md`: shipped work, active priorities, and explicitly unshipped
+  provider work.
 - `CHANGELOG.md`: release history and complete behavior notes.
 - `docs/architecture.md`: system boundaries and trust model.
 - `docs/safety.md`: canonical safety model - what each command checks, what's
@@ -17,7 +19,8 @@ check these surfaces before calling the docs fresh.
 - `docs/bootstrap-prompt.md`: canonical copy-paste prompt embedded by package
   pages.
 - `docs/guides/`: search-targeted explanations for package concepts and
-  Claude/Codex workflow sharing.
+  released provider workflow sharing, plus contributor-facing compilation
+  design where relevant.
 - `llms.txt`: concise agent-readable repository summary and canonical links.
 - `docs/discoverability.md`: GitHub SEO, website SEO, GEO/AEO, metadata,
   sitemap, social preview, and search-targeted content checklist.
@@ -57,6 +60,9 @@ check these surfaces before calling the docs fresh.
 - Provider compatibility and capabilities currently depend on registry fields
   being published and rendered end to end. If only the CLI side has landed,
   public copy should say that website rendering is pending.
+- Do not add an adapter to public provider lists, bootstrap prompts, or package
+  pages while its PR is open. Merge the adapter first, then synchronize every
+  affected public surface in the same release-tracked change.
 - Registry storage copy should describe Supabase as the active production store
   and GitHub as publisher identity plus rollback/backfill context. If the
   website storage adapter changes again, update README, architecture, ADR 0012,
