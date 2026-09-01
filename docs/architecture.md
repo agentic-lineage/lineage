@@ -12,7 +12,7 @@ Lineage is a local runtime for distributing agent environment packages.
 - `lineage add <ref>` is the receiver shortcut for the registry path: resolve, download/import, inspect, confirm, and enable in one command. `lineage package pull` remains available when the receiver wants to fetch first and enable separately.
 - The runtime resolves enabled packages, builds a launch plan, and starts the selected provider through an explicit adapter boundary.
 - `lineage workflow run <workflow> <provider>` narrows materialization to the ordered steps declared by one workflow, while plain `lineage run <provider>` materializes the full enabled package set.
-- Provider shims let a normal command such as `claude`, `codex`, or `aider` enter the Lineage runtime first, then hand off to the real provider binary. Aider is config/materialization-only: its generated `CONVENTIONS.md` is linked through the project-local `.aider.conf.yml` `read:` setting, and no credentials or model keys are packaged.
+- Provider shims let a normal command such as `claude`, `codex`, or `aider` enter the Lineage runtime first, then hand off to the real provider binary. Aider integrates project-local configuration by linking its generated `CONVENTIONS.md` through the project-local `.aider.conf.yml` `read:` setting; credentials and model keys remain unmanaged.
 
 ## Package Shape
 
