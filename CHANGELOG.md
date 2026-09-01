@@ -4,9 +4,6 @@ All notable changes to Lineage will be documented here.
 
 ## Unreleased
 
-- Reject explicit schema zero in project configuration and materialization
-  state while preserving the legacy default for files with no schema field.
-
 ## [1.1.1] - 2026-09-01
 
 ### Added
@@ -17,6 +14,8 @@ All notable changes to Lineage will be documented here.
 
 ### Fixed
 
+- Reject explicit schema zero in project configuration and materialization
+  state while preserving the legacy default for files with no schema field.
 - Preserve executable file modes when packages are exported and imported.
 - Reject an explicit package schema version of zero instead of treating it as
   an implicit default.
