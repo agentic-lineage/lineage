@@ -18,6 +18,7 @@ jobs:
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
           PR_BASE: ${{ github.event.pull_request.base.ref }}
+          PR_HEAD: ${{ github.event.pull_request.head.ref }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           python3 - <<'PY'
@@ -29,6 +30,7 @@ jobs:
 
           body = os.environ.get("PR_BODY") or ""
           base = os.environ.get("PR_BASE") or ""
+          head = os.environ.get("PR_HEAD") or ""
           repo = os.environ.get("GITHUB_REPOSITORY") or ""
           errors = []
 
@@ -97,6 +99,9 @@ jobs:
                           errors.append("Non-release housekeeping main PRs must explain why no release tag is needed.")
 
                   if is_release:
+                      if head != "develop":
+                          errors.append("Release-worthy PRs targeting main must originate from develop.")
+
                       planned_version = subsection_text(release, "Planned version")
                       version_match = re.search(r"\bv\d+\.\d+\.\d+\b", planned_version)
                       if not version_match:
@@ -129,6 +134,8 @@ jobs:
 
                       if not has_checked_item(release, "Create and push an annotated SemVer tag after merge to `main`."):
                           errors.append("Release-worthy main PRs must confirm the post-merge annotated tag plan.")
+                      if not has_checked_item(release, "Sync the resulting `main` merge commit back into `develop`."):
+                          errors.append("Release-worthy main PRs must confirm the post-merge main-to-develop sync-back plan.")
 
           if errors:
               print("PR policy failed:")

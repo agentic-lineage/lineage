@@ -4,6 +4,47 @@ All notable changes to Lineage will be documented here.
 
 ## Unreleased
 
+## [1.1.1] - 2026-09-01
+
+### Added
+
+- Add deterministic, read-only source-workspace inventory for the workflow
+  compilation pipeline (#203), including file classification, content digests,
+  and literal Markdown citation evidence without executing source files.
+
+### Fixed
+
+- Reject explicit schema zero in project configuration and materialization
+  state while preserving the legacy default for files with no schema field.
+- Preserve executable file modes when packages are exported and imported.
+- Reject an explicit package schema version of zero instead of treating it as
+  an implicit default.
+- Normalize package references consistently when disabling from a subdirectory.
+- Restore restrictive permissions on the stored registry-auth token.
+- Add a timeout to registry pull requests so an unavailable registry does not
+  leave the CLI waiting indefinitely.
+- Normalize an empty enabled-package list when loading project configuration.
+- Require confirmation before publishing a package, with an explicit `--yes`
+  escape hatch for automation.
+- Extend secret scanning to detect ASIA-prefixed AWS credentials, GitHub
+  fine-grained personal access tokens, and Google API keys.
+
+### Documentation and verification
+
+- Add the canonical safety model, including current limits around PII and
+  instruction-risk detection, rollback pinning, and planned yank semantics.
+- Document `.lineage` container versioning and the accepted concurrent-write
+  limitation.
+- Run the Go test matrix on Windows and add receiver-flow coverage for
+  materialization and provider path behavior.
+- Establish `main` as the stable release branch, with release promotions from
+  `develop` and mandatory sync-back after stable releases or hotfixes.
+
+## Historical entries
+
+The entries below predate structured per-version headings. They remain as a
+record of earlier Lineage work and are not all part of v1.1.1.
+
 - Initial local agent package runtime scaffold.
 - Refreshed public-facing documentation for the current registry, `lineage add`,
   workflow, inspect/list/doctor, and bootstrap-prompt surfaces; added a public
@@ -182,3 +223,19 @@ All notable changes to Lineage will be documented here.
   also takes a durable snapshot of exactly what was enabled, and links
   it to the graph entry above via `snapshot_id`. Identical file content
   is stored once regardless of how many packages/versions reference it.
+- Added `docs/safety.md` as the canonical safety model (#143, #137):
+  maps every safety check to its pipeline stage, spells out secret-scan
+  and capability-declaration limits, and says plainly that PII/personal-
+  context detection and instruction-risk scanning are not implemented
+  yet. README, `docs/architecture.md`, `docs/guides/lineage-package.md`,
+  `AGENTS.md`, `SECURITY.md`, and `llms.txt` now link to it.
+- Documented the exact-version pinning flow as the current rollback path
+  (#144) and the planned yank/tombstone semantics for `lineage package
+  unpublish` (#145) in the README, ahead of either command landing.
+- The `.lineage` directory is now designed as a whole (#59, ADR 0015):
+  `.lineage/config.yaml` and `.lineage/materialized-<provider>.json` carry
+  a `schema` field, defaulted for existing files and rejected if
+  unsupported, matching `lineage.yaml`'s existing convention. `lineage
+  enable` now gitignores a project's `.lineage/` the first time it
+  creates one, since it can carry machine-local provider paths and
+  regenerable cache that should never be committed.

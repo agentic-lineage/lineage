@@ -152,15 +152,15 @@ func extractArchive(r io.Reader, destDir string) error {
 		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 			return fmt.Errorf("create directory for %q: %w", hdr.Name, err)
 		}
-		if err := writeArchiveFile(target, tr, hdr.Size); err != nil {
+		if err := writeArchiveFile(target, tr, hdr.Size, ContentMode(os.FileMode(hdr.Mode))); err != nil {
 			return fmt.Errorf("extract %q: %w", hdr.Name, err)
 		}
 	}
 	return nil
 }
 
-func writeArchiveFile(target string, r io.Reader, size int64) error {
-	out, err := atomicfile.Create(target, 0o644)
+func writeArchiveFile(target string, r io.Reader, size int64, mode os.FileMode) error {
+	out, err := atomicfile.Create(target, mode)
 	if err != nil {
 		return err
 	}
@@ -192,6 +192,10 @@ func copyTree(src, dest string) error {
 		if err != nil {
 			return err
 		}
-		return atomicfile.WriteFile(target, data, 0o644)
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		return atomicfile.WriteFile(target, data, ContentMode(info.Mode()))
 	})
 }

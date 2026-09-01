@@ -48,9 +48,13 @@ var deniedExtensions = []string{".pem", ".key", ".pfx", ".p12"}
 // secretContentPatterns are high-confidence content signatures: things that
 // are essentially never present in legitimate package source material.
 var secretContentPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`\bAIza[0-9A-Za-z_-]{35}`), // Google API key
 	regexp.MustCompile(`-----BEGIN [A-Z ]*PRIVATE KEY-----`),
-	regexp.MustCompile(`\bAKIA[0-9A-Z]{16}\b`),         // AWS access key ID
-	regexp.MustCompile(`\bgh[pousr]_[A-Za-z0-9]{20,}`), // GitHub token prefixes (ghp_, gho_, ghu_, ghs_, ghr_)
+	// AWS access key ID: AKIA is a long-lived user key, ASIA a temporary
+	// STS/assumed-role session key.
+	regexp.MustCompile(`\b(AKIA|ASIA)[0-9A-Z]{16}\b`),
+	regexp.MustCompile(`\bgh[pousr]_[A-Za-z0-9]{20,}`),   // GitHub token prefixes (ghp_, gho_, ghu_, ghs_, ghr_)
+	regexp.MustCompile(`\bgithub_pat_[A-Za-z0-9_]{30,}`), // GitHub fine-grained personal access token
 }
 
 // ScanForSecrets walks a package directory and flags files that look like

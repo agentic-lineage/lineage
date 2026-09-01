@@ -53,6 +53,22 @@ Release automation may later build artifacts from tags, publish checksums, and
 draft GitHub release notes, but automation should not choose the version number
 or decide that a milestone is complete.
 
+## Release Flow
+
+Stable releases follow this sequence:
+
+```text
+develop -> main release PR
+        -> merge commit
+        -> tag merged main commit
+        -> publish GitHub Release and artifacts
+        -> sync main back into develop
+```
+
+Do not squash-merge or rebase a release promotion. The merge commit on `main`
+is part of the release record and must become an ancestor of `develop` during
+the sync-back step.
+
 ## Release Roles
 
 - Maintainer: decides release scope, chooses the version, creates the annotated
@@ -85,9 +101,12 @@ Before promoting to `main` or tagging a release:
   tracking check.
 - The PR declares the planned SemVer tag, release classification, release notes,
   and post-merge annotated tag plan.
+- The release promotion uses a merge commit rather than squash merge or rebase.
 - Branch protection requires review, passing status checks, conversation
   resolution, and no force pushes or branch deletion.
 - The release notes identify any skipped automated tests or manual validation.
+- After the release PR lands, synchronize `main` back into `develop` and verify
+  that `main` has zero commits not represented in `develop`.
 
 Release tags should point at commits that are already on `main`.
 

@@ -34,9 +34,17 @@ func TestSafeJoinRejectsTraversal(t *testing.T) {
 
 func TestSafeJoinRejectsAbsolutePaths(t *testing.T) {
 	root := t.TempDir()
-	if _, err := SafeJoin(root, "/etc/passwd"); err == nil {
+	if _, err := SafeJoin(root, unsafeAbsolutePath(root)); err == nil {
 		t.Fatal("SafeJoin() error = nil, want error for absolute path")
 	}
+}
+
+// unsafeAbsolutePath returns a path that filepath.IsAbs considers absolute
+// on the current OS: "/etc/passwd" on POSIX, but "C:\etc\passwd" (or
+// whatever drive root holds it) on Windows, where a leading "/" alone isn't
+// absolute without a volume name.
+func unsafeAbsolutePath(root string) string {
+	return filepath.Join(filepath.VolumeName(root)+string(filepath.Separator), "etc", "passwd")
 }
 
 func TestSafeJoinRejectsEmptyPath(t *testing.T) {

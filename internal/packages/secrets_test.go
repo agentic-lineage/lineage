@@ -42,6 +42,27 @@ func TestScanForSecretsFlagsPrivateKeyContent(t *testing.T) {
 	}
 }
 
+func TestScanForSecretsFlagsGoogleAPIKey(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "gcp-pack")
+	if err := InitPackage(root, "gcp-pack"); err != nil {
+		t.Fatal(err)
+	}
+	// Split so this fixture's literal bytes never form a real key-shaped
+	// string in the source file itself (Google API keys are 39 chars:
+	// "AIza" plus 35 base62 chars; GitHub push protection flags a
+	// contiguous AIza-prefixed match even in test fixtures).
+	fakeGoogleKey := "AIza" + strings.Repeat("A", 35)
+	mustWrite(t, filepath.Join(root, "references", "config.txt"), "google_api_key = "+fakeGoogleKey+"\n")
+
+	findings, err := ScanForSecrets(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasFindingForPath(findings, filepath.ToSlash(filepath.Join("references", "config.txt"))) {
+		t.Fatalf("findings = %#v, want a finding for the Google API key", findings)
+	}
+}
+
 func TestScanForSecretsFlagsAWSKeyID(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "aws-pack")
 	if err := InitPackage(root, "aws-pack"); err != nil {
@@ -59,6 +80,42 @@ func TestScanForSecretsFlagsAWSKeyID(t *testing.T) {
 	}
 	if !hasFindingForPath(findings, filepath.ToSlash(filepath.Join("references", "config.txt"))) {
 		t.Fatalf("findings = %#v, want a finding for the AWS key ID", findings)
+	}
+}
+
+func TestScanForSecretsFlagsAWSSessionKeyID(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "sts-pack")
+	if err := InitPackage(root, "sts-pack"); err != nil {
+		t.Fatal(err)
+	}
+	// Split for the same reason as the AKIA fixture above.
+	fakeSessionKeyID := "ASIA" + "ABCDEFGHIJKLMNOP"
+	mustWrite(t, filepath.Join(root, "references", "session.txt"), "aws_access_key_id = "+fakeSessionKeyID+"\n")
+
+	findings, err := ScanForSecrets(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasFindingForPath(findings, filepath.ToSlash(filepath.Join("references", "session.txt"))) {
+		t.Fatalf("findings = %#v, want a finding for the temporary STS key ID", findings)
+	}
+}
+
+func TestScanForSecretsFlagsFineGrainedGitHubToken(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "gh-pack")
+	if err := InitPackage(root, "gh-pack"); err != nil {
+		t.Fatal(err)
+	}
+	// Split for the same reason as the AWS key ID fixture above.
+	fakeToken := "github" + "_pat_11AAAAAAA0aaaaaaaaaaaaa_" + strings.Repeat("b", 59)
+	mustWrite(t, filepath.Join(root, "references", "token.txt"), "GITHUB_TOKEN="+fakeToken+"\n")
+
+	findings, err := ScanForSecrets(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasFindingForPath(findings, filepath.ToSlash(filepath.Join("references", "token.txt"))) {
+		t.Fatalf("findings = %#v, want a finding for the fine-grained GitHub token", findings)
 	}
 }
 

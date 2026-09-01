@@ -7,6 +7,10 @@ import (
 	"strings"
 )
 
+// tokenFileMode keeps the stored bearer credential readable only by its
+// owner.
+const tokenFileMode = 0o600
+
 // TokenPath is where `lineage login` stores the GitHub device-flow token.
 func TokenPath(home string) string {
 	return filepath.Join(home, "github_token")
@@ -20,8 +24,16 @@ func SaveToken(home, token string) error {
 	if err := os.MkdirAll(home, 0o755); err != nil {
 		return fmt.Errorf("create lineage home: %w", err)
 	}
-	if err := os.WriteFile(TokenPath(home), []byte(strings.TrimSpace(token)+"\n"), 0o600); err != nil {
+	path := TokenPath(home)
+	if err := os.WriteFile(path, []byte(strings.TrimSpace(token)+"\n"), tokenFileMode); err != nil {
 		return fmt.Errorf("save GitHub token: %w", err)
+	}
+	// The mode passed to WriteFile only applies when the file is created,
+	// so an existing github_token - from an older Lineage, a manual edit, a
+	// restored backup - would keep whatever loose permissions it already
+	// had. Re-enforce them on every save instead.
+	if err := os.Chmod(path, tokenFileMode); err != nil {
+		return fmt.Errorf("restrict GitHub token permissions: %w", err)
 	}
 	return nil
 }

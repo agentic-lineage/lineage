@@ -42,3 +42,5 @@ Each record should include:
 - [0012 V1 Distribution Contract And Receiver Activation](0012-v1-distribution-contract-and-receiver-activation.md)
 - [0013 Local Lineage Graph Is An Append-Only Descendant Log](0013-local-lineage-graph-is-an-append-only-descendant-log.md)
 - [0014 Content-Addressed Snapshot Store Separates Objects From Manifests](0014-content-addressed-snapshot-store-separates-objects-from-manifests.md)
+- [0015 The `.lineage` Directory Is A Versioned, Enumerated Container With A Gitignore Default](0015-the-lineage-directory-is-a-versioned-enumerated-container.md)
+- [0016 Prioritize Package Distribution And Behavioral Compilation](0016-prioritize-package-distribution-and-behavioral-compilation.md)

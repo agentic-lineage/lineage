@@ -78,6 +78,8 @@ Safety and compatibility notes:
 Post-merge tag plan:
 
 - [ ] Create and push an annotated SemVer tag after merge to `main`.
+- [ ] Publish the matching GitHub Release and artifacts.
+- [ ] Sync the resulting `main` merge commit back into `develop`.
 
 Non-release housekeeping reason:
 

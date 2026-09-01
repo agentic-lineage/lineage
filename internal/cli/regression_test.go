@@ -4,12 +4,43 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/agentic-lineage/lineage/internal/config"
 	"github.com/agentic-lineage/lineage/internal/packages"
 )
+
+// writeFakeProviderScript creates a fake provider executable that records
+// the arguments it's invoked with to markerPath, using whichever command
+// interpreter the current OS actually has (POSIX shell vs. Windows batch),
+// and returns the script's path.
+func writeFakeProviderScript(t *testing.T, dir, markerPath string) string {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		path := filepath.Join(dir, "fake-claude.cmd")
+		script := "@echo off\r\n" +
+			"if exist \"" + markerPath + "\" del \"" + markerPath + "\"\r\n" +
+			":loop\r\n" +
+			"if \"%~1\"==\"\" goto done\r\n" +
+			">> \"" + markerPath + "\" echo %~1\r\n" +
+			"shift\r\n" +
+			"goto loop\r\n" +
+			":done\r\n"
+		if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	path := filepath.Join(dir, "fake-claude.sh")
+	script := "#!/bin/sh\nfor arg in \"$@\"; do\n\tprintf '%s\\n' \"$arg\"\ndone > " + markerPath + "\n"
+	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
 
 // TestEnableFromSubdirectoryUsesProjectRoot guards against a regression
 // where `lineage enable` used cwd directly instead of walking up to find an
@@ -142,11 +173,7 @@ func TestRunPassesFlagsAfterDoubleDashToProvider(t *testing.T) {
 
 	// Fake provider binary that records the args it was invoked with.
 	marker := filepath.Join(tmp, "invoked-args.txt")
-	fakeBinary := filepath.Join(tmp, "fake-claude.sh")
-	script := "#!/bin/sh\necho \"$@\" > " + marker + "\n"
-	if err := os.WriteFile(fakeBinary, []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	fakeBinary := writeFakeProviderScript(t, tmp, marker)
 
 	cfg := config.DefaultProjectConfig()
 	cfg.Providers = map[string]config.Provider{"claude": {Binary: fakeBinary}}
@@ -168,8 +195,9 @@ func TestRunPassesFlagsAfterDoubleDashToProvider(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	// Everything after "--" is meant for the provider, including a literal
-	// "--dry-run" flag that the wrapped agent itself understands.
-	if err := Execute(nil, []string{"run", "claude", "--", "--dry-run"}, nil, &stdout, &stderr); err != nil {
+	// "--dry-run" flag that the wrapped agent itself understands and an
+	// argument with spaces whose boundary must survive Windows batch forwarding.
+	if err := Execute(nil, []string{"run", "claude", "--", "--dry-run", "hello world"}, nil, &stdout, &stderr); err != nil {
 		t.Fatalf("run error = %v stderr=%s", err, stderr.String())
 	}
 
@@ -177,9 +205,10 @@ func TestRunPassesFlagsAfterDoubleDashToProvider(t *testing.T) {
 	if err != nil {
 		t.Fatalf("provider binary was never invoked (lineage likely intercepted --dry-run as its own flag instead of passing it through): %v", err)
 	}
-	got := strings.TrimSpace(string(data))
-	if got != "--dry-run" {
-		t.Fatalf("provider invoked with args %q, want %q", got, "--dry-run")
+	got := strings.Split(strings.TrimSpace(strings.ReplaceAll(string(data), "\r\n", "\n")), "\n")
+	want := []string{"--dry-run", "hello world"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("provider invoked with args %#v, want %#v", got, want)
 	}
 }
 
@@ -294,5 +323,61 @@ func TestInitWorkspaceRejectsTraversingName(t *testing.T) {
 	}
 	if _, err := os.Stat(config.WorkspacePackagesDir(home, "team-a")); err != nil {
 		t.Fatalf("stat workspace packages dir: %v", err)
+	}
+}
+
+// TestDisableFromSubdirectoryMatchesStoredRef covers #162: `lineage enable
+// ./local-pack` from a subdirectory stores the ref re-expressed against the
+// project root, so `lineage disable ./local-pack` from that same directory
+// has to normalize its argument the same way before matching. Comparing the
+// literal argument made disable reject the exact ref enable had just
+// accepted.
+func TestDisableFromSubdirectoryMatchesStoredRef(t *testing.T) {
+	tmp := t.TempDir()
+	home := filepath.Join(tmp, "home")
+	project := filepath.Join(tmp, "project")
+	sub := filepath.Join(project, "packages", "sub")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	rootConfigPath := config.ProjectConfigPath(project)
+	if err := config.SaveProjectConfig(rootConfigPath, config.DefaultProjectConfig()); err != nil {
+		t.Fatal(err)
+	}
+	pkgDir := filepath.Join(sub, "local-pack")
+	if err := packages.InitPackage(pkgDir, "local-pack"); err != nil {
+		t.Fatal(err)
+	}
+
+	oldHome := os.Getenv(config.HomeEnv)
+	t.Setenv(config.HomeEnv, home)
+	defer t.Setenv(config.HomeEnv, oldHome)
+	oldWd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(oldWd)
+	if err := os.Chdir(sub); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if err := Execute(nil, []string{"enable", "./local-pack"}, nil, &stdout, &stderr); err != nil {
+		t.Fatalf("enable error = %v stderr=%s", err, stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if err := Execute(nil, []string{"disable", "./local-pack", "--yes"}, nil, &stdout, &stderr); err != nil {
+		t.Fatalf("disable error = %v stderr=%s; disable must normalize the ref the same way enable did", err, stderr.String())
+	}
+
+	rootCfg, err := config.LoadProjectConfig(rootConfigPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rootCfg.EnabledPackages) != 0 {
+		t.Fatalf("root config EnabledPackages = %#v, want empty after disable", rootCfg.EnabledPackages)
 	}
 }

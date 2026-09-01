@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -46,7 +47,7 @@ func TestPackagePublishRequiresToken(t *testing.T) {
 	t.Setenv("LINEAGE_REGISTRY_URL", "http://unused.invalid")
 
 	var stdout, stderr bytes.Buffer
-	err := Execute(nil, []string{"package", "publish", pkgDir}, nil, &stdout, &stderr)
+	err := Execute(nil, []string{"package", "publish", pkgDir, "--yes"}, nil, &stdout, &stderr)
 	if err == nil {
 		t.Fatal("publish without a token: error = nil, want error")
 	}
@@ -77,7 +78,7 @@ func TestPackagePublishSucceeds(t *testing.T) {
 	t.Setenv("LINEAGE_REGISTRY_URL", srv.URL)
 
 	var stdout, stderr bytes.Buffer
-	if err := Execute(nil, []string{"package", "publish", pkgDir}, nil, &stdout, &stderr); err != nil {
+	if err := Execute(nil, []string{"package", "publish", pkgDir, "--yes"}, nil, &stdout, &stderr); err != nil {
 		t.Fatalf("publish error = %v stderr=%s", err, stderr.String())
 	}
 	if !strings.Contains(stdout.String(), "published publish-me@0.1.0") {
@@ -100,12 +101,98 @@ func TestPackagePublishRefusesPortabilityBlockers(t *testing.T) {
 	t.Setenv("LINEAGE_REGISTRY_URL", "http://unused.invalid")
 
 	var stdout, stderr bytes.Buffer
-	err := Execute(nil, []string{"package", "publish", pkgDir}, nil, &stdout, &stderr)
+	err := Execute(nil, []string{"package", "publish", pkgDir, "--yes"}, nil, &stdout, &stderr)
 	if err == nil {
 		t.Fatal("publish error = nil, want portability blocker error")
 	}
 	if !strings.Contains(stderr.String(), "unresolved portability blockers") {
 		t.Fatalf("stderr = %q, want portability blocker message", stderr.String())
+	}
+}
+
+// TestPackagePublishInteractiveYesProceeds covers the core gate from #163:
+// without --yes, an affirmative answer must still reach the registry.
+func TestPackagePublishInteractiveYesProceeds(t *testing.T) {
+	root := t.TempDir()
+	pkgDir := filepath.Join(root, "confirm-yes")
+	if err := packages.InitPackage(pkgDir, "confirm-yes"); err != nil {
+		t.Fatal(err)
+	}
+
+	hits := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		if r.Header.Get("Authorization") != "Bearer test-token" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(map[string]any{"alreadyPublished": false})
+	}))
+	defer srv.Close()
+
+	t.Setenv(config.HomeEnv, filepath.Join(root, "home"))
+	t.Setenv("LINEAGE_PUBLISH_TOKEN", "test-token")
+	t.Setenv("LINEAGE_REGISTRY_URL", srv.URL)
+
+	var stdout, stderr bytes.Buffer
+	stdin := strings.NewReader("y\n")
+	if err := Execute(nil, []string{"package", "publish", pkgDir}, stdin, &stdout, &stderr); err != nil {
+		t.Fatalf("publish error = %v stderr=%s", err, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Publish package at") {
+		t.Fatalf("stdout = %q, want a publish confirmation prompt", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "published confirm-yes@0.1.0") {
+		t.Fatalf("stdout = %q, want confirmation naming the published package", stdout.String())
+	}
+	if hits == 0 {
+		t.Fatal("expected the registry to be called after interactive yes")
+	}
+}
+
+// TestPackagePublishDeclinedAbortsWithoutRegistry covers declined and
+// no-input paths: both must print "aborted" and never hit the registry.
+func TestPackagePublishDeclinedAbortsWithoutRegistry(t *testing.T) {
+	cases := []struct {
+		name  string
+		stdin io.Reader // nil means no stdin reader at all
+	}{
+		{name: "declined", stdin: strings.NewReader("n\n")},
+		{name: "no-input", stdin: nil},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			pkgDir := filepath.Join(root, "confirm-no")
+			if err := packages.InitPackage(pkgDir, "confirm-no"); err != nil {
+				t.Fatal(err)
+			}
+
+			hits := 0
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				hits++
+				w.WriteHeader(http.StatusCreated)
+				_ = json.NewEncoder(w).Encode(map[string]any{"alreadyPublished": false})
+			}))
+			defer srv.Close()
+
+			t.Setenv(config.HomeEnv, filepath.Join(root, "home"))
+			t.Setenv("LINEAGE_PUBLISH_TOKEN", "test-token")
+			t.Setenv("LINEAGE_REGISTRY_URL", srv.URL)
+
+			var stdout, stderr bytes.Buffer
+			if err := Execute(nil, []string{"package", "publish", pkgDir}, tc.stdin, &stdout, &stderr); err != nil {
+				t.Fatalf("publish error = %v stderr=%s", err, stderr.String())
+			}
+			if !strings.Contains(stdout.String(), "aborted") {
+				t.Fatalf("stdout = %q, want abort notice", stdout.String())
+			}
+			if hits != 0 {
+				t.Fatalf("registry hits = %d, want 0 when publish is declined", hits)
+			}
+		})
 	}
 }
 

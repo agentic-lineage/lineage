@@ -53,18 +53,19 @@ func TestCandidateBinariesFindsMultipleAndSkipsShim(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	writeExecutable(t, filepath.Join(dirA, "claude"))
-	writeExecutable(t, filepath.Join(dirB, "claude"))
+	claudeA := writeExecutable(t, filepath.Join(dirA, "claude"))
+	claudeB := writeExecutable(t, filepath.Join(dirB, "claude"))
 	writeExecutable(t, filepath.Join(shimDir, "claude"))
 
+	t.Setenv("PATHEXT", ".EXE;.CMD")
 	t.Setenv("PATH", strings.Join([]string{dirA, shimDir, dirB}, string(os.PathListSeparator)))
 
 	candidates := CandidateBinaries("claude", home)
 	if len(candidates) != 2 {
 		t.Fatalf("CandidateBinaries() = %#v, want 2 real candidates (shim excluded)", candidates)
 	}
-	if candidates[0] != filepath.Join(dirA, "claude") || candidates[1] != filepath.Join(dirB, "claude") {
-		t.Fatalf("CandidateBinaries() = %#v, want PATH order [%s, %s]", candidates, dirA, dirB)
+	if candidates[0] != claudeA || candidates[1] != claudeB {
+		t.Fatalf("CandidateBinaries() = %#v, want PATH order [%s, %s]", candidates, claudeA, claudeB)
 	}
 }
 
@@ -81,16 +82,17 @@ func TestCandidateBinariesSkipsShimContentOutsideShimsDir(t *testing.T) {
 	realDir := t.TempDir()
 	strayDir := t.TempDir() // NOT config.ShimsDir(home) - simulates a shim installed under a different LINEAGE_HOME, or copied elsewhere
 
-	writeExecutable(t, filepath.Join(realDir, "claude"))
-	strayShim := filepath.Join(strayDir, "claude")
+	realClaude := writeExecutable(t, filepath.Join(realDir, "claude"))
+	strayShim := filepath.Join(strayDir, "claude") + executableSuffix()
 	if err := os.WriteFile(strayShim, []byte("#!/bin/sh\nexec \"/some/other/lineage\" run claude \"$@\"\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 
+	t.Setenv("PATHEXT", ".EXE;.CMD")
 	t.Setenv("PATH", strings.Join([]string{strayDir, realDir}, string(os.PathListSeparator)))
 
 	candidates := CandidateBinaries("claude", home)
-	if len(candidates) != 1 || candidates[0] != filepath.Join(realDir, "claude") {
+	if len(candidates) != 1 || candidates[0] != realClaude {
 		t.Fatalf("CandidateBinaries() = %#v, want only the real binary in %s (the shim-content stray copy in %s excluded)", candidates, realDir, strayDir)
 	}
 }
@@ -105,11 +107,27 @@ func TestCandidateBinariesEmptyWhenNoneFound(t *testing.T) {
 	}
 }
 
-func writeExecutable(t *testing.T, path string) {
+// writeExecutable creates a fake executable at base plus whatever suffix
+// the current OS needs for candidateBinariesFor to recognize it as a
+// candidate (see executableSuffix), and returns the path actually written.
+func writeExecutable(t *testing.T, base string) string {
 	t.Helper()
+	path := base + executableSuffix()
 	if err := os.WriteFile(path, []byte("#!/bin/sh\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	return path
+}
+
+// executableSuffix returns the filename suffix a bare command name needs
+// to be discovered by CandidateBinaries on the current OS: none on POSIX,
+// where the executable bit gates it instead, and ".EXE" on Windows, matching
+// the PATHEXT value set by the high-level CandidateBinaries tests above.
+func executableSuffix() string {
+	if runtime.GOOS == "windows" {
+		return ".EXE"
+	}
+	return ""
 }
 
 func TestCandidateExtensionsPOSIXIsExactName(t *testing.T) {

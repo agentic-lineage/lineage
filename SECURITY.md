@@ -18,3 +18,5 @@ Lineage should not package or export:
 - Private machine-local cache files
 
 If a workflow needs configuration, prefer setup prompts, templates, or explicit user-provided values on the receiver's machine.
+
+For what Lineage actually checks, blocks, or only warns about across the package lifecycle - not a vulnerability-reporting concern, but a product-safety one - see [docs/safety.md](docs/safety.md).

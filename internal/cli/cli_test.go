@@ -4,12 +4,36 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/agentic-lineage/lineage/internal/config"
 	"github.com/agentic-lineage/lineage/internal/packages"
 )
+
+// noopProviderBinary returns the path to an OS-appropriate fake provider
+// executable that exits successfully doing nothing. Tests that only build
+// a --dry-run plan can use any string as Binary since it's never actually
+// run, but tests that let `lineage run`/`workflow run` proceed to
+// provider.Launch need a binary that genuinely executes on the current
+// OS - "/bin/echo" doesn't exist on Windows.
+func noopProviderBinary(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	if runtime.GOOS == "windows" {
+		path := filepath.Join(dir, "fake-provider.cmd")
+		if err := os.WriteFile(path, []byte("@echo off\r\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	path := filepath.Join(dir, "fake-provider.sh")
+	if err := os.WriteFile(path, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
 
 func TestEnableAndDryRun(t *testing.T) {
 	tmp := t.TempDir()
@@ -283,7 +307,7 @@ func setUpEnabledProject(t *testing.T) (project, home string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg.Providers = map[string]config.Provider{"claude": {Binary: "/bin/echo"}}
+	cfg.Providers = map[string]config.Provider{"claude": {Binary: noopProviderBinary(t)}}
 	if err := config.SaveProjectConfig(config.ProjectConfigPath(project), cfg); err != nil {
 		t.Fatal(err)
 	}
@@ -754,7 +778,7 @@ func setUpEnabledWorkflowProject(t *testing.T) (project, home string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg.Providers = map[string]config.Provider{"claude": {Binary: "/bin/echo"}}
+	cfg.Providers = map[string]config.Provider{"claude": {Binary: noopProviderBinary(t)}}
 	if err := config.SaveProjectConfig(config.ProjectConfigPath(project), cfg); err != nil {
 		t.Fatal(err)
 	}

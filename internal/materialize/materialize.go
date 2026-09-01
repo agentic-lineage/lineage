@@ -26,10 +26,18 @@ const (
 	endMarker    = "<!-- lineage:end -->"
 )
 
+// currentStateSchema is the only materialized-<provider>.json schema this
+// build understands. Mirrors packages.CurrentSchema and
+// config.CurrentConfigSchema (see docs/decisions/0005): a future
+// incompatible change to this file's shape has a clean way to say so
+// instead of a parser guessing.
+const currentStateSchema = 1
+
 // state is the record of exactly what the last Apply call wrote for one
 // provider, so a later call can remove entries that are no longer desired
 // (a package got disabled, a skill got removed) instead of only ever adding.
 type state struct {
+	Schema    int      `json:"schema"`
 	SkillDirs []string `json:"skill_dirs"` // relative to project root, sorted
 }
 
@@ -124,7 +132,7 @@ func apply(projectRoot string, adapter provider.Provider, pkgs []packages.Packag
 		return fmt.Errorf("update %s: %w", adapter.ContextFile, err)
 	}
 
-	return saveState(projectRoot, adapter.Name, state{SkillDirs: written})
+	return saveState(projectRoot, adapter.Name, state{Schema: currentStateSchema, SkillDirs: written})
 }
 
 // NeedsApproval reports whether calling Apply with pkgs would change
@@ -210,6 +218,21 @@ func loadState(projectRoot, providerName string) (state, error) {
 	var s state
 	if err := json.Unmarshal(data, &s); err != nil {
 		return state{}, fmt.Errorf("parse %s: %w", statePath(projectRoot, providerName), err)
+	}
+	// An absent schema field and an explicit `"schema": 0` both decode to
+	// zero. Probe the field as a pointer so only the absent legacy field
+	// defaults to schema 1; explicit zero remains unsupported.
+	var probe struct {
+		Schema *int `json:"schema"`
+	}
+	if err := json.Unmarshal(data, &probe); err != nil {
+		return state{}, fmt.Errorf("parse %s: %w", statePath(projectRoot, providerName), err)
+	}
+	if probe.Schema == nil {
+		s.Schema = currentStateSchema
+	}
+	if s.Schema != currentStateSchema {
+		return state{}, fmt.Errorf("%s declares schema %d, but this build only understands schema %d", statePath(projectRoot, providerName), s.Schema, currentStateSchema)
 	}
 	return s, nil
 }

@@ -15,16 +15,10 @@ Lineage uses a lean, goal-based development process.
 
 Milestones are goals, not dates.
 
-Current milestones (see the GitHub Milestones page for the authoritative, up-to-date list):
-
-- `Goal: Durable runtime foundations`
-- `Goal: Safe package round trip`
-- `Goal: Receiver setup experience`
-- `Goal: Provider and CI confidence`
-- `Goal: Package materialization`
-- `Goal: Add providers`
-- `Goal: Workflow execution`
-- `Goal: CLI completeness`
+The current program of work is recorded in [ROADMAP.md](../ROADMAP.md). It
+prioritizes integration of the existing provider/diagnostics queue, workflow
+compilation, receiver trust and lifecycle, and real package adoption. The
+GitHub Milestones page remains authoritative for the active issue grouping.
 
 A milestone is done when its issues prove the goal works well enough to trust, not when a calendar date arrives.
 
@@ -70,3 +64,5 @@ Every PR should:
 - Check [public-docs-sync.md](public-docs-sync.md) when a change affects install,
   publishing, receiver activation, setup prompts, provider compatibility, or
   safety wording.
+- Do not document an open provider PR as supported behavior. Its release docs
+  land with the adapter after it is merged into `develop`.

@@ -90,7 +90,9 @@ lineage workflow run resume-review codex --dry-run
 - Repository: https://github.com/agentic-lineage/lineage
 - Website and registry: https://agenticlineage.vercel.app/
 - Package directory: https://agenticlineage.vercel.app/packages
+- Safety model: https://github.com/agentic-lineage/lineage/blob/develop/docs/safety.md
 - Architecture: https://github.com/agentic-lineage/lineage/blob/develop/docs/architecture.md
 - What is a Lineage package: https://github.com/agentic-lineage/lineage/blob/develop/docs/guides/lineage-package.md
 - How to share Claude Code and Codex workflows: https://github.com/agentic-lineage/lineage/blob/develop/docs/guides/share-agent-workflows.md
+- Compiling an existing agent workspace (contributor-facing, no public command yet): https://github.com/agentic-lineage/lineage/blob/develop/docs/guides/compiling-existing-workspaces.md
 - Bootstrap prompt: https://github.com/agentic-lineage/lineage/blob/develop/docs/bootstrap-prompt.md
