@@ -53,6 +53,19 @@ Lineage uses goal-based milestones rather than date-based milestones. A mileston
 
 Keep labels minimal. Use labels for important signals like `bug`, `enhancement`, `documentation`, `security`, `critical`, or `needs:decision`; use milestones and the project board for planning.
 
+## Maintainer Triage
+
+New contributor issues should enter with `needs-triage`. Contributors do not set priority.
+
+When a maintainer assesses an issue, remove `needs-triage` and record planning state in the project board:
+
+- `Priority`: `P0` for release, security, or correctness blockers; `P1` for active near-term product direction; `P2` for accepted roadmap work that should not compete with P1; leave blank or backlog for valid work that is not sequenced.
+- `Readiness`: note whether the issue is ready, blocked, deferred, or still needs a maintainer decision.
+- `Dependencies/blockers`: link blocking issues or PRs directly in the issue body or comments.
+- `Milestone`: attach the issue to the relevant goal milestone when it belongs to a focused product goal.
+
+Use `good first issue` only for bounded, low-context, low-blast-radius work. Use `help wanted` only when the issue is ready for external contribution and is not already owned or blocked.
+
 ## Pull Requests
 
 Use the pull request template and include verification output. Every PR must link an assigned issue. PRs without a linked issue should not be reviewed except for maintainer-only housekeeping changes.
