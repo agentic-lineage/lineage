@@ -208,8 +208,6 @@ providers:
     binary: /path/to/real/claude
   codex:
     binary: /path/to/real/codex
-  windsurf:
-    binary: /path/to/real/windsurf
 ```
 
 The first time `lineage run` would stage files for a provider, it shows what it
