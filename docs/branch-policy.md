@@ -83,7 +83,10 @@ commits missing from `develop`.
 
 An automated workflow opens or updates a dedicated `main` to `develop` sync PR
 after pushes to `main`. It does not push directly to `develop`; branch protection,
-required checks, and human review still apply.
+required checks, and human review still apply. The workflow uses the repository
+secret `LINEAGE_SYNC_PR_TOKEN` instead of broad write permissions on the built-in
+Actions token. Use a fine-grained token with access limited to this repository
+and the minimum permissions needed to write contents and pull requests.
 
 ## Planning Model
 
