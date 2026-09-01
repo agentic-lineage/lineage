@@ -1,10 +1,14 @@
 ## Summary
 
-What changed, and why?
+Briefly explain what changed and why this PR is needed.
 
 ## Linked Issue
 
-Closes #
+Closes #123
+
+For maintainer-only housekeeping with no issue, write:
+
+Maintainer housekeeping: <reason>
 
 - [ ] The linked issue is assigned to me.
 - [ ] This PR targets `develop`, or it is a release-tracked promotion into `main`.
@@ -19,6 +23,12 @@ Closes #
 - [ ] Documentation only
 - [ ] Tests only
 
+## Merge Method
+
+- [ ] Squash merge for an ordinary PR into `develop`.
+- [ ] Merge commit for a release promotion into `main`.
+- [ ] Merge commit for a `main` to `develop` sync-back.
+
 ## Safety
 
 - [ ] This change does not export secrets, credentials, private prompts, or machine-local state.
@@ -32,7 +42,7 @@ List the relevant test cases added or updated, then paste the commands or checks
 
 Relevant test cases:
 
-- 
+- None yet.
 
 ```text
 go test ./...
@@ -40,7 +50,7 @@ go test ./...
 
 If this PR does not need automated tests, explain why:
 
-- 
+- Automated tests apply unless this is documentation-only or maintainer housekeeping.
 
 ## Release Tracking
 
@@ -83,7 +93,7 @@ Post-merge tag plan:
 
 Non-release housekeeping reason:
 
--
+- Not applicable.
 
 ## Notes For Reviewers
 
