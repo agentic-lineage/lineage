@@ -819,6 +819,37 @@ func TestWorkflowRunMaterializesOnlyItsSteps(t *testing.T) {
 	}
 }
 
+func TestWorkflowRunWindsurfMaterializesWithoutLaunching(t *testing.T) {
+	project, _ := setUpEnabledWorkflowProject(t)
+	cfg, err := config.LoadProjectConfig(config.ProjectConfigPath(project))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Providers = map[string]config.Provider{"windsurf": {Binary: filepath.Join(project, "must-not-launch")}}
+	if err := config.SaveProjectConfig(config.ProjectConfigPath(project), cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	oldWd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldWd) })
+	if err := os.Chdir(project); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if err := Execute(nil, []string{"workflow", "run", "review-flow", "windsurf", "--yes"}, nil, &stdout, &stderr); err != nil {
+		t.Fatalf("workflow run error = %v stderr=%s", err, stderr.String())
+	}
+	for _, skill := range []string{"gather", "review"} {
+		if _, err := os.Stat(filepath.Join(project, ".windsurf", "rules", "wf-pack-"+skill)); err != nil {
+			t.Fatalf("expected %s staged: %v", skill, err)
+		}
+	}
+}
+
 func TestWorkflowRunUnknownWorkflowFails(t *testing.T) {
 	setUpEnabledWorkflowProject(t)
 

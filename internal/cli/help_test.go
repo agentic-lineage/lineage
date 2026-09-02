@@ -17,6 +17,11 @@ func TestTopLevelHelp(t *testing.T) {
 	if stderr.Len() != 0 {
 		t.Fatalf("stderr = %q, want empty for --help", stderr.String())
 	}
+	if !strings.Contains(stdout.String(), "apply packages and launch where supported") ||
+		!strings.Contains(stdout.String(), "launchable providers") ||
+		!strings.Contains(stdout.String(), "windsurf") {
+		t.Fatalf("stdout = %q, want capability-aware provider help", stdout.String())
+	}
 }
 
 func TestVersionFlag(t *testing.T) {
@@ -73,7 +78,7 @@ func TestPackageSubcommandHelpDoesNotTreatFlagAsArgument(t *testing.T) {
 
 func TestHelpFlagRecognizedAfterOtherArguments(t *testing.T) {
 	cases := []struct {
-		args []string
+		args      []string
 		wantUsage string
 	}{
 		{[]string{"enable", "--yes", "--help"}, "usage: lineage enable"},

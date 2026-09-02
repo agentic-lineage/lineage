@@ -1197,6 +1197,9 @@ func runProvider(ctx context.Context, args []string, home string, stdin *bufio.R
 		fmt.Fprintln(stderr, err)
 		return err
 	}
+	if plan.ProviderPlan.MaterializeOnly {
+		return nil
+	}
 
 	if err := provider.Launch(plan.ProviderPlan); err != nil {
 		fmt.Fprintln(stderr, err)
@@ -1280,6 +1283,9 @@ func runWorkflow(args []string, home string, stdin *bufio.Reader, stdout, stderr
 	if err := materialize.ApplyWorkflow(found.Root, adapter, ownerPkg, wf); err != nil {
 		fmt.Fprintln(stderr, err)
 		return err
+	}
+	if providerPlan.MaterializeOnly {
+		return nil
 	}
 
 	if err := provider.Launch(providerPlan); err != nil {
@@ -1433,8 +1439,8 @@ func pathIndexOf(pathEntries []string, dir string) int {
 
 func printUsage(w io.Writer) {
 	fmt.Fprintln(w, strings.TrimSpace(fmt.Sprintf(`
-Lineage - package a working agent setup, share it, and run it through your
-own Claude or Codex.
+Lineage - package a working agent setup, share it, and run it through a
+supported agent provider.
 
 Usage:
   lineage <command> [arguments]
@@ -1459,13 +1465,13 @@ Using a package:
   list                                    show enabled packages
   inspect <path-or-id> [--yaml]            show a package's contents
   graph list [--yaml]                      show what this project's state descends from
-  run <%s> [--dry-run] [--yes]  launch a provider with packages applied
+  run <%s> [--dry-run] [--yes]  apply packages and launch where supported
   workflow run <name> <%s>      run one declared workflow
 
 Setup:
   init user                               create the user package directory
   init workspace <name>                   create a shared workspace
-  install-shims                           put lineage in front of claude/codex on PATH
+  install-shims                           put lineage in front of launchable providers on PATH
   doctor                                  check config, PATH, and provider setup
 
   -h, --help                              show this help
