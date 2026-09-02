@@ -244,10 +244,16 @@ func loadState(projectRoot, providerName string) (state, error) {
 	if err := json.Unmarshal(data, &s); err != nil {
 		return state{}, fmt.Errorf("parse %s: %w", statePath(projectRoot, providerName), err)
 	}
-	// schema 0 means the state predates the schema field; treat that as
-	// schema 1, the only schema that ever existed before it was added -
-	// same rule config.LoadProjectConfig uses for config.yaml's schema field.
-	if s.Schema == 0 {
+	// An absent schema field and an explicit `"schema": 0` both decode to
+	// zero. Probe the field as a pointer so only the absent legacy field
+	// defaults to schema 1; explicit zero remains unsupported.
+	var probe struct {
+		Schema *int `json:"schema"`
+	}
+	if err := json.Unmarshal(data, &probe); err != nil {
+		return state{}, fmt.Errorf("parse %s: %w", statePath(projectRoot, providerName), err)
+	}
+	if probe.Schema == nil {
 		s.Schema = currentStateSchema
 	}
 	if s.Schema != currentStateSchema {

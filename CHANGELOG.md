@@ -4,6 +4,47 @@ All notable changes to Lineage will be documented here.
 
 ## Unreleased
 
+## [1.1.1] - 2026-09-01
+
+### Added
+
+- Add deterministic, read-only source-workspace inventory for the workflow
+  compilation pipeline (#203), including file classification, content digests,
+  and literal Markdown citation evidence without executing source files.
+
+### Fixed
+
+- Reject explicit schema zero in project configuration and materialization
+  state while preserving the legacy default for files with no schema field.
+- Preserve executable file modes when packages are exported and imported.
+- Reject an explicit package schema version of zero instead of treating it as
+  an implicit default.
+- Normalize package references consistently when disabling from a subdirectory.
+- Restore restrictive permissions on the stored registry-auth token.
+- Add a timeout to registry pull requests so an unavailable registry does not
+  leave the CLI waiting indefinitely.
+- Normalize an empty enabled-package list when loading project configuration.
+- Require confirmation before publishing a package, with an explicit `--yes`
+  escape hatch for automation.
+- Extend secret scanning to detect ASIA-prefixed AWS credentials, GitHub
+  fine-grained personal access tokens, and Google API keys.
+
+### Documentation and verification
+
+- Add the canonical safety model, including current limits around PII and
+  instruction-risk detection, rollback pinning, and planned yank semantics.
+- Document `.lineage` container versioning and the accepted concurrent-write
+  limitation.
+- Run the Go test matrix on Windows and add receiver-flow coverage for
+  materialization and provider path behavior.
+- Establish `main` as the stable release branch, with release promotions from
+  `develop` and mandatory sync-back after stable releases or hotfixes.
+
+## Historical entries
+
+The entries below predate structured per-version headings. They remain as a
+record of earlier Lineage work and are not all part of v1.1.1.
+
 - Initial local agent package runtime scaffold.
 - Refreshed public-facing documentation for the current registry, `lineage add`,
   workflow, inspect/list/doctor, and bootstrap-prompt surfaces; added a public

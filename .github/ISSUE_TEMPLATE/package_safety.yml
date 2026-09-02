@@ -1,12 +1,14 @@
 name: Package safety issue
 description: Report a problem with package contents, setup actions, or secret-safe sharing.
 title: "[Safety]: "
-labels: ["safety", "needs-triage"]
+labels: ["security", "needs-triage"]
 body:
   - type: markdown
     attributes:
       value: |
         Use this for package validation, import/setup prompts, secret detection, file reconstruction, or provider boundary concerns.
+
+        Maintainers set priority, readiness, blockers, and milestones during triage.
 
         Before opening a PR for this issue, assign the issue to yourself. PRs should link an assigned issue.
   - type: textarea

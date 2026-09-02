@@ -1,6 +1,7 @@
 package materialize
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -575,8 +576,13 @@ func TestNeedsApprovalDefaultsMissingSchemaToCurrent(t *testing.T) {
 		t.Fatal(err)
 	}
 	rel := filepath.Join(adapter.SkillsDir, pkg.Manifest.Name+"-"+pkg.Skills[0])
-	legacy := `{"skill_dirs":["` + filepath.ToSlash(rel) + `"]}`
-	if err := os.WriteFile(path, []byte(legacy), 0o644); err != nil {
+	legacy, err := json.Marshal(struct {
+		SkillDirs []string `json:"skill_dirs"`
+	}{SkillDirs: []string{rel}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, legacy, 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -604,5 +610,23 @@ func TestNeedsApprovalRejectsUnsupportedSchema(t *testing.T) {
 
 	if _, err := NeedsApproval(root, adapter, []packages.Package{pkg}); err == nil {
 		t.Fatal("NeedsApproval() error = nil, want error for unsupported schema")
+	}
+}
+
+func TestNeedsApprovalRejectsExplicitZeroSchema(t *testing.T) {
+	root := t.TempDir()
+	pkg := buildTestPackage(t, "review-pack", "review")
+	adapter := provider.Provider{Name: "claude", SkillsDir: filepath.Join(".claude", "skills"), ContextFile: "CLAUDE.md"}
+
+	path := statePath(root, "claude")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(`{"schema":0,"skill_dirs":[]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := NeedsApproval(root, adapter, []packages.Package{pkg}); err == nil {
+		t.Fatal("NeedsApproval() error = nil, want error for explicit schema zero")
 	}
 }
