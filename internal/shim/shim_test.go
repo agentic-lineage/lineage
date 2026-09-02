@@ -43,6 +43,9 @@ func TestInstallWritesShimsOnlyForLaunchableProviders(t *testing.T) {
 			t.Fatalf("expected shim for %s at %s: %v", p.Name, path, err)
 		}
 	}
+	if _, err := os.Stat(filepath.Join(home, "bin", FileName("cline", runtime.GOOS))); !os.IsNotExist(err) {
+		t.Fatalf("expected no shim for materialization-only Cline, stat error = %v", err)
+	}
 }
 
 func TestShimContentPOSIXIsExecutableShellScript(t *testing.T) {

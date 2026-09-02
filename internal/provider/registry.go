@@ -44,6 +44,7 @@ var registry = []Provider{
 	{Name: "codex", SkillsDir: filepath.Join(".agents", "skills"), ContextFile: "AGENTS.md"},
 	{Name: "windsurf", SkillsDir: filepath.Join(".windsurf", "rules"), ContextFile: ".windsurfrules", MaterializeOnly: true},
 	{Name: "aider", SkillsDir: filepath.Join(".aider", "skills"), ContextFile: "CONVENTIONS.md", Config: AiderConfigAdapter{}},
+	{Name: "cline", SkillsDir: ".clinerules", ContextFile: filepath.Join(".clinerules", "lineage.md"), MaterializeOnly: true},
 }
 
 // Known returns every registered provider, in registration order.

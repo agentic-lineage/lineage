@@ -172,6 +172,33 @@ func TestApplyStagesSkillsForCodexAdapter(t *testing.T) {
 	}
 }
 
+func TestApplyStagesSkillsForClineAdapter(t *testing.T) {
+	root := t.TempDir()
+	pkg := buildTestPackage(t, "review-pack", "review")
+	cline, err := provider.Get("cline")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Apply(root, cline, []packages.Package{pkg}); err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+
+	skillFile := filepath.Join(root, ".clinerules", "review-pack-review", "SKILL.md")
+	if _, err := os.Stat(skillFile); err != nil {
+		t.Fatalf("expected staged skill at %s: %v", skillFile, err)
+	}
+
+	contextData, err := os.ReadFile(filepath.Join(root, ".clinerules", "lineage.md"))
+	if err != nil {
+		t.Fatalf("read Cline context file: %v", err)
+	}
+	content := string(contextData)
+	if !containsAll(content, beginMarker, endMarker, "review-pack@0.1.0") {
+		t.Fatalf("Cline context missing expected content:\n%s", content)
+	}
+}
+
 func TestApplyStagesSkillsAndConfigForAiderAdapter(t *testing.T) {
 	root := t.TempDir()
 	pkg := buildTestPackage(t, "review-pack", "review")

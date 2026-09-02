@@ -253,8 +253,10 @@ func TestRunUnknownProviderListsKnownProviders(t *testing.T) {
 	if err == nil {
 		t.Fatal("Execute(run does-not-exist) error = nil, want error")
 	}
-	if !strings.Contains(stderr.String(), "claude") || !strings.Contains(stderr.String(), "codex") || !strings.Contains(stderr.String(), "aider") {
-		t.Fatalf("stderr = %q, want it to list known providers", stderr.String())
+	for _, name := range []string{"claude", "codex", "windsurf", "aider", "cline"} {
+		if !strings.Contains(stderr.String(), name) {
+			t.Fatalf("stderr = %q, want it to list known provider %q", stderr.String(), name)
+		}
 	}
 }
 
@@ -262,8 +264,10 @@ func TestUsageListsKnownProvidersNotHardcoded(t *testing.T) {
 	var stdout bytes.Buffer
 	printUsage(&stdout)
 	out := stdout.String()
-	if !strings.Contains(out, "claude") || !strings.Contains(out, "codex") || !strings.Contains(out, "aider") {
-		t.Fatalf("usage = %q, want it to mention every registered provider", out)
+	for _, name := range []string{"claude", "codex", "windsurf", "aider", "cline"} {
+		if !strings.Contains(out, name) {
+			t.Fatalf("usage = %q, want it to mention registered provider %q", out, name)
+		}
 	}
 	if !strings.Contains(out, "put lineage in front of launchable providers on PATH") {
 		t.Fatalf("usage = %q, want install-shims help to describe launchable providers", out)
@@ -346,6 +350,29 @@ func TestRunApprovedMaterializes(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(project, ".claude", "skills", "agent-pack-hello", "SKILL.md")); err != nil {
 		t.Fatalf("expected materialized skill, stat err = %v", err)
+	}
+}
+
+func TestRunClineMaterializesWithoutBinaryOrLaunch(t *testing.T) {
+	project, _ := setUpEnabledProject(t)
+	cfg, err := config.LoadProjectConfig(config.ProjectConfigPath(project))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Providers = map[string]config.Provider{}
+	if err := config.SaveProjectConfig(config.ProjectConfigPath(project), cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if err := Execute(nil, []string{"run", "cline", "--yes"}, nil, &stdout, &stderr); err != nil {
+		t.Fatalf("Cline run error = %v stderr=%s", err, stderr.String())
+	}
+	if _, err := os.Stat(filepath.Join(project, ".clinerules", "lineage.md")); err != nil {
+		t.Fatalf("expected Cline context materialization: %v", err)
+	}
+	if strings.Contains(stderr.String(), "binary") || strings.Contains(stdout.String(), "launch failed") {
+		t.Fatalf("Cline run attempted launch: stdout=%q stderr=%q", stdout.String(), stderr.String())
 	}
 }
 
@@ -819,6 +846,38 @@ func TestWorkflowRunMaterializesOnlyItsSteps(t *testing.T) {
 	}
 	if !strings.Contains(string(content), "Active workflow: review-flow") {
 		t.Fatalf("CLAUDE.md = %s, want the active workflow sequence", content)
+	}
+}
+
+func TestWorkflowRunClineMaterializesWithoutBinaryOrLaunch(t *testing.T) {
+	project, _ := setUpEnabledWorkflowProject(t)
+	cfg, err := config.LoadProjectConfig(config.ProjectConfigPath(project))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Providers = map[string]config.Provider{}
+	if err := config.SaveProjectConfig(config.ProjectConfigPath(project), cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if err := Execute(nil, []string{"workflow", "run", "review-flow", "cline", "--dry-run"}, nil, &stdout, &stderr); err != nil {
+		t.Fatalf("Cline workflow dry-run error = %v stderr=%s", err, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "real_binary: none") || !strings.Contains(stdout.String(), "launch: disabled (config/materialization only)") {
+		t.Fatalf("Cline workflow dry-run = %q, want materialization-only output", stdout.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if err := Execute(nil, []string{"workflow", "run", "review-flow", "cline", "--yes"}, nil, &stdout, &stderr); err != nil {
+		t.Fatalf("Cline workflow run error = %v stderr=%s", err, stderr.String())
+	}
+	content, err := os.ReadFile(filepath.Join(project, ".clinerules", "lineage.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(content), "Active workflow: review-flow") {
+		t.Fatalf("Cline context = %s, want active workflow", content)
 	}
 }
 

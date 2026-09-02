@@ -26,6 +26,16 @@ func TestGetKnownProvider(t *testing.T) {
 	}
 }
 
+func TestGetClineProvider(t *testing.T) {
+	p, err := Get("cline")
+	if err != nil {
+		t.Fatalf("Get(cline) error = %v", err)
+	}
+	if p.SkillsDir != ".clinerules" || p.ContextFile != filepath.Join(".clinerules", "lineage.md") || !p.MaterializeOnly {
+		t.Fatalf("Get(cline) = %#v, want project-scoped Cline paths", p)
+	}
+}
+
 func TestGetAiderProvider(t *testing.T) {
 	p, err := Get("aider")
 	if err != nil {

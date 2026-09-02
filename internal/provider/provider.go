@@ -31,7 +31,6 @@ func Resolve(name, lineageHome string, project config.ProjectConfig, args []stri
 	cfg := project.Providers[name]
 	binary := cfg.Binary
 	if binary == "" {
-		var err error
 		binary, err = findRealBinary(name, lineageHome)
 		if err != nil {
 			return Plan{}, err

@@ -58,6 +58,29 @@ func TestBuildPlanUnknownProvider(t *testing.T) {
 	}
 }
 
+func TestBuildPlanClineDryRun(t *testing.T) {
+	project := t.TempDir()
+	home := t.TempDir()
+	cfg := config.DefaultProjectConfig()
+	if err := config.SaveProjectConfig(config.ProjectConfigPath(project), cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	plan, err := BuildPlan("cline", project, home, []string{"must-not-launch"})
+	if err != nil {
+		t.Fatalf("BuildPlan(cline) error = %v", err)
+	}
+	if !strings.Contains(plan.DryRunString(), "provider: cline") {
+		t.Fatalf("DryRunString() = %q, want Cline provider", plan.DryRunString())
+	}
+	if plan.ProviderPlan.Binary != "" || !plan.ProviderPlan.MaterializeOnly ||
+		!strings.Contains(plan.DryRunString(), "real_binary: none") ||
+		!strings.Contains(plan.DryRunString(), "args: must-not-launch") ||
+		!strings.Contains(plan.DryRunString(), "launch: disabled (config/materialization only)") {
+		t.Fatalf("Cline plan = %#v, dry run = %q; want no launch target", plan.ProviderPlan, plan.DryRunString())
+	}
+}
+
 func TestBuildPlanAiderDryRun(t *testing.T) {
 	project := t.TempDir()
 	home := t.TempDir()
