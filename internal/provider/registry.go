@@ -14,10 +14,11 @@ import (
 // internal/packages, internal/cli) should ever special-case a provider
 // name. Providers sit on top of the provider-neutral core, not inside it.
 type Provider struct {
-	Name        string
-	SkillsDir   string
-	ContextFile string
-	Config      ConfigAdapter
+	Name            string
+	SkillsDir       string
+	ContextFile     string
+	MaterializeOnly bool
+	Config          ConfigAdapter
 }
 
 // ConfigState records a provider-specific project configuration edit so the
@@ -41,6 +42,7 @@ type ConfigAdapter interface {
 var registry = []Provider{
 	{Name: "claude", SkillsDir: filepath.Join(".claude", "skills"), ContextFile: "CLAUDE.md"},
 	{Name: "codex", SkillsDir: filepath.Join(".agents", "skills"), ContextFile: "AGENTS.md"},
+	{Name: "windsurf", SkillsDir: filepath.Join(".windsurf", "rules"), ContextFile: ".windsurfrules", MaterializeOnly: true},
 	{Name: "aider", SkillsDir: filepath.Join(".aider", "skills"), ContextFile: "CONVENTIONS.md", Config: AiderConfigAdapter{}},
 }
 

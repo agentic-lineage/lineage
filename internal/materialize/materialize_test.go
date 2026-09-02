@@ -206,6 +206,33 @@ func TestApplyStagesSkillsAndConfigForAiderAdapter(t *testing.T) {
 	}
 }
 
+func TestApplyStagesSkillsForWindsurfAdapter(t *testing.T) {
+	root := t.TempDir()
+	pkg := buildTestPackage(t, "review-pack", "review")
+	windsurf, err := provider.Get("windsurf")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Apply(root, windsurf, []packages.Package{pkg}); err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+
+	skillFile := filepath.Join(root, ".windsurf", "rules", "review-pack-review", "SKILL.md")
+	if _, err := os.Stat(skillFile); err != nil {
+		t.Fatalf("expected staged skill at %s: %v", skillFile, err)
+	}
+
+	contextData, err := os.ReadFile(filepath.Join(root, ".windsurfrules"))
+	if err != nil {
+		t.Fatalf("read Windsurf context file: %v", err)
+	}
+	content := string(contextData)
+	if !containsAll(content, beginMarker, endMarker, "review-pack@0.1.0") {
+		t.Fatalf("Windsurf context missing expected content:\n%s", content)
+	}
+}
+
 func TestAiderConfigPreservesCommentsAndSupportsScalarRead(t *testing.T) {
 	root := t.TempDir()
 	pkg := buildTestPackage(t, "review-pack", "review")

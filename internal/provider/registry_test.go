@@ -36,6 +36,16 @@ func TestGetAiderProvider(t *testing.T) {
 	}
 }
 
+func TestGetWindsurfProvider(t *testing.T) {
+	p, err := Get("windsurf")
+	if err != nil {
+		t.Fatalf("Get(windsurf) error = %v", err)
+	}
+	if p.SkillsDir != filepath.Join(".windsurf", "rules") || p.ContextFile != ".windsurfrules" || !p.MaterializeOnly {
+		t.Fatalf("Get(windsurf) = %#v, want project-scoped Windsurf paths", p)
+	}
+}
+
 func TestGetUnknownProviderListsKnownNames(t *testing.T) {
 	_, err := Get("nope")
 	if err == nil {
