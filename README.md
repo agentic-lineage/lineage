@@ -187,14 +187,15 @@ what it would materialize before writing.
 
 - `lineage run claude --dry-run` previews Claude materialization.
 - `lineage run codex --dry-run` previews Codex materialization.
+- `lineage run aider --dry-run` previews Aider materialization.
 - `lineage run windsurf --dry-run` previews Windsurf project materialization
   without resolving a Windsurf binary.
-- `lineage workflow run <workflow-name> <claude|codex|windsurf> --dry-run`
+- `lineage workflow run <workflow-name> <claude|codex|windsurf|aider> --dry-run`
   narrows the plan to one exported workflow; Windsurf remains materialization-only.
 
-The current adapters focus on Claude, Codex, and Windsurf. The package shape
-stays plain so future adapters can use the same manifest, skills, workflows,
-agents, policies, references, and setup material.
+The current adapters focus on Claude, Codex, Windsurf, and Aider. The package
+shape stays plain so future adapters can use the same manifest, skills,
+workflows, agents, policies, references, and setup material.
 
 For the contributor-facing work to compile an existing agent workspace into
 those portable artifacts, see
@@ -212,6 +213,8 @@ providers:
     binary: /path/to/real/claude
   codex:
     binary: /path/to/real/codex
+  aider:
+    binary: /path/to/real/aider
 ```
 
 The first time `lineage run` would stage files for a provider, it shows what it
@@ -240,8 +243,8 @@ lineage enable <package-path-or-id> [--yes]
 lineage disable <package-path-or-id> [--yes]
 lineage list
 lineage inspect <package-path-or-id> [--yaml]
-lineage run <claude|codex|windsurf> [--dry-run] [--yes] [-- provider args...]
-lineage workflow run <workflow-name> <claude|codex|windsurf> [--dry-run] [--yes] [-- provider args...]
+lineage run <claude|codex|windsurf|aider> [--dry-run] [--yes] [-- provider args...]
+lineage workflow run <workflow-name> <claude|codex|windsurf|aider> [--dry-run] [--yes] [-- provider args...]
 
 lineage install-shims
 lineage doctor
@@ -262,7 +265,8 @@ lineage doctor
 lineage workflow run resume-review claude --dry-run
 ```
 
-Install local shims when you want commands such as `claude` or `codex` to enter
+Install local shims when you want launchable provider commands such as `claude`,
+`codex`, or `aider` to enter
 Lineage first:
 
 ```bash

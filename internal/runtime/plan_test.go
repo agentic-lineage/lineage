@@ -58,6 +58,23 @@ func TestBuildPlanUnknownProvider(t *testing.T) {
 	}
 }
 
+func TestBuildPlanAiderDryRun(t *testing.T) {
+	project := t.TempDir()
+	home := t.TempDir()
+	cfg := config.ProjectConfig{Providers: map[string]config.Provider{"aider": {Binary: "/bin/echo"}}}
+	if err := config.SaveProjectConfig(config.ProjectConfigPath(project), cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	plan, err := BuildPlan("aider", project, home, nil)
+	if err != nil {
+		t.Fatalf("BuildPlan(aider) error = %v", err)
+	}
+	if !strings.Contains(plan.DryRunString(), "provider: aider") {
+		t.Fatalf("DryRunString() = %q, want Aider provider", plan.DryRunString())
+	}
+}
+
 func TestBuildPlanWindsurfDryRun(t *testing.T) {
 	project := t.TempDir()
 	home := t.TempDir()
