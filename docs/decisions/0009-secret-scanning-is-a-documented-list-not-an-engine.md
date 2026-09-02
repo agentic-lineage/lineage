@@ -10,11 +10,11 @@ The README, `SECURITY.md`, and the `lineage-package-security-guardrails` skill a
 
 ## Decision
 
-`internal/packages.ScanForSecrets` checks a small, explicit, documented set of signals: denylisted filenames (`.env`, `.npmrc`, SSH private key names, `.pem`/`.key`/`.pfx`/`.p12`) and a short list of high-confidence content patterns (private key headers, AWS access key ID shape, GitHub token prefixes). Findings report a file path and a human-readable reason only — the matched value itself is never included in a finding, so scan output is always safe to print or log.
+`internal/packages.ScanForSecrets` checks a small, explicit, documented set of signals: denylisted filenames (`.env`, `.npmrc`, SSH private key names, `.pem`/`.key`/`.pfx`/`.p12`) and a short list of high-confidence content patterns (private key headers, AWS access key ID shapes, GitHub token prefixes, and Google API keys using the `AIza` prefix). Findings report a file path and a human-readable reason only — the matched value itself is never included in a finding, so scan output is always safe to print or log.
 
 ## Consequences
 
-The scan is precise (low false-positive rate) rather than exhaustive — it will not catch every possible secret shape, and that's an accepted tradeoff for v1, not an oversight. It's also trivially extensible: adding a new pattern is a one-line change to a reviewable list, not a retrain or a new subsystem. `lineage package validate` and the future export gate (Phase 3) both consume this as one input among several, not as a claim of complete secret safety.
+The scan is precise (low false-positive rate) rather than exhaustive — it will not catch every possible secret shape, and that's an accepted tradeoff for v1, not an oversight. It's also trivially extensible: adding a new pattern is a one-line change to a reviewable list, not a retrain or a new subsystem. `lineage package validate`, export, import, and publish consume this as one input among several, not as a claim of complete secret safety.
 
 ## Follow-Up
 

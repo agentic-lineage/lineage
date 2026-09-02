@@ -17,6 +17,7 @@ No network access is required: Lineage's one dependency (`gopkg.in/yaml.v3`) is 
 - Treat package contents as untrusted input.
 - Keep manifests deterministic and human-readable.
 - Do not add code or docs that encourage sharing secrets, credentials, provider login state, or private machine state.
+- Treat source-workspace inventory as evidence: do not execute source scripts or turn ambiguous input into asserted behavior.
 - Add tests for package discovery, config changes, launch planning, and any safety checks you touch.
 
 ## The `.lineage` Directory
@@ -36,17 +37,34 @@ Repository skills in `.agents/skills` are Lineage guardrails, not generic engine
 
 ## Branch Policy
 
-- `master` is the stable branch.
-- `develop` is the active development branch.
-- Feature and fix branches should target `develop`.
-- Changes reach `master` only after they have been reviewed and are ready for a stable release point.
-- Protected branches should require tests to pass and owner approval before merge.
+- `main` is the stable release branch.
+- `develop` is the active integration branch and default PR target.
+- Feature and fix branches target `develop`.
+- Stable releases are promoted through a pull request from `develop` to `main`.
+- Release promotions use a merge commit rather than squash merging.
+- After a release promotion lands, `main` is synchronized back into `develop`
+  before normal development continues.
+- Hotfixes that land on `main` must also be synchronized back into `develop`.
+- Protected branches require tests and the configured review policy before merge.
 
 ## Lean Planning
 
 Lineage uses goal-based milestones rather than date-based milestones. A milestone represents a product learning goal, such as proving safe package round trips or receiver setup.
 
 Keep labels minimal. Use labels for important signals like `bug`, `enhancement`, `documentation`, `security`, `critical`, or `needs:decision`; use milestones and the project board for planning.
+
+## Maintainer Triage
+
+New contributor issues should enter with `needs-triage`. Contributors do not set priority.
+
+When a maintainer assesses an issue, remove `needs-triage` and record planning state in the project board:
+
+- `Priority`: `P0` for release, security, or correctness blockers; `P1` for active near-term product direction; `P2` for accepted roadmap work that should not compete with P1; leave blank or backlog for valid work that is not sequenced.
+- `Readiness`: note whether the issue is ready, blocked, deferred, or still needs a maintainer decision.
+- `Dependencies/blockers`: link blocking issues or PRs directly in the issue body or comments.
+- `Milestone`: attach the issue to the relevant goal milestone when it belongs to a focused product goal.
+
+Use `good first issue` only for bounded, low-context, low-blast-radius work. Use `help wanted` only when the issue is ready for external contribution and is not already owned or blocked.
 
 ## Pull Requests
 
@@ -58,3 +76,7 @@ For changes that affect install, publishing, receiver activation, setup prompts,
 provider compatibility, or safety wording, check
 [docs/public-docs-sync.md](docs/public-docs-sync.md) and call out any website,
 Wiki, package-page, or Discussion sync still needed.
+
+For inventory or behavioral-compilation changes, also update the
+[compilation guide](docs/guides/compiling-existing-workspaces.md) and keep the
+evidence/interpretation boundary explicit.

@@ -1,0 +1,158 @@
+name: Sync Main To Develop
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    name: Open sync PR
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Open or update sync PR
+        env:
+          GH_TOKEN: ${{ secrets.LINEAGE_SYNC_PR_TOKEN }}
+          REPO: ${{ github.repository }}
+          SYNC_BRANCH: chore/sync-main-into-develop
+        run: |
+          set -euo pipefail
+
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::error::Repository secret LINEAGE_SYNC_PR_TOKEN is required to push the sync branch and open/update the sync PR."
+            exit 1
+          fi
+
+          git fetch origin main develop
+
+          if git merge-base --is-ancestor origin/main origin/develop; then
+            echo "develop already contains main; no sync PR needed."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git checkout -B "$SYNC_BRANCH" origin/main
+          gh auth setup-git
+          git push --force-with-lease origin "$SYNC_BRANCH"
+
+          title="chore: sync main back into develop"
+          body="$(cat <<'BODY'
+          ## Summary
+
+          Maintainer housekeeping: synchronize `main` back into `develop` after a stable-branch update.
+
+          This PR carries the current `main` history back to `develop` so future work includes the exact stable release or hotfix boundary. It is opened by automation, but still relies on normal branch protection, required checks, and human review.
+
+          ## Linked Issue
+
+          Maintainer housekeeping: automated stable-branch sync-back.
+
+          ## Package Impact
+
+          - [x] Documentation only
+
+          ## Merge Method
+
+          - [ ] Squash merge for an ordinary PR into `develop`.
+          - [ ] Merge commit for a release promotion into `main`.
+          - [x] Merge commit for a `main` to `develop` sync-back.
+
+          ## Safety
+
+          - [x] This change does not export secrets, credentials, private prompts, or machine-local state.
+          - [x] Package inputs are treated as untrusted.
+          - [x] Path handling prevents traversal outside the intended workspace/package root where applicable.
+          - [x] Provider-specific logic stays behind an explicit boundary.
+
+          ## Verification
+
+          Relevant test cases:
+
+          - Main-to-develop ancestry check before opening this PR.
+
+          ```text
+          go test ./...
+          ```
+
+          If this PR does not need automated tests, explain why:
+
+          - This PR may contain zero file changes when it preserves a release merge commit in branch history; required checks still run before merge.
+
+          ## Release Tracking
+
+          Complete this section only for PRs targeting `main`.
+
+          - [ ] Release-worthy main promotion
+          - [ ] Non-release housekeeping
+
+          Planned version:
+
+          `v0.0.0`
+
+          Release classification:
+
+          `patch | minor | major`
+
+          Release notes:
+
+          What changed:
+
+          - Not applicable.
+
+          What is experimental:
+
+          - Not applicable.
+
+          What is outside scope:
+
+          - Not applicable.
+
+          Safety and compatibility notes:
+
+          - Not applicable.
+
+          Post-merge tag plan:
+
+          - [ ] Create and push an annotated SemVer tag after merge to `main`.
+          - [ ] Publish the matching GitHub Release and artifacts.
+          - [ ] Sync the resulting `main` merge commit back into `develop`.
+
+          Non-release housekeeping reason:
+
+          - Not applicable.
+
+          ## Notes For Reviewers
+
+          Use a merge commit for this PR so `main` remains an ancestor of `develop`.
+          BODY
+          )"
+
+          existing="$(gh pr list \
+            --repo "$REPO" \
+            --base develop \
+            --head "$SYNC_BRANCH" \
+            --state open \
+            --json number \
+            --jq '.[0].number // empty')"
+
+          if [ -n "$existing" ]; then
+            gh pr edit "$existing" --repo "$REPO" --title "$title" --body "$body"
+          else
+            gh pr create \
+              --repo "$REPO" \
+              --base develop \
+              --head "$SYNC_BRANCH" \
+              --title "$title" \
+              --body "$body"
+          fi

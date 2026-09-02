@@ -69,6 +69,7 @@ func TestCandidateBinariesFindsMultipleAndSkipsShim(t *testing.T) {
 	claudeB := writeExecutable(t, filepath.Join(dirB, "claude"))
 	writeExecutable(t, filepath.Join(shimDir, "claude"))
 
+	t.Setenv("PATHEXT", ".EXE;.CMD")
 	t.Setenv("PATH", strings.Join([]string{dirA, shimDir, dirB}, string(os.PathListSeparator)))
 
 	candidates := CandidateBinaries("claude", home)
@@ -99,6 +100,7 @@ func TestCandidateBinariesSkipsShimContentOutsideShimsDir(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	t.Setenv("PATHEXT", ".EXE;.CMD")
 	t.Setenv("PATH", strings.Join([]string{strayDir, realDir}, string(os.PathListSeparator)))
 
 	candidates := CandidateBinaries("claude", home)
@@ -131,14 +133,11 @@ func writeExecutable(t *testing.T, base string) string {
 
 // executableSuffix returns the filename suffix a bare command name needs
 // to be discovered by CandidateBinaries on the current OS: none on POSIX,
-// where the executable bit gates it instead, and ".exe" on Windows, which
-// resolves bare commands through PATHEXT and has no executable-bit concept.
-// ".exe" is always present in PATHEXT, whether left at its OS default or
-// overridden, so it's a safe fixed choice for tests that don't set PATHEXT
-// themselves (contrast the PATHEXT-sensitive tests below, which do).
+// where the executable bit gates it instead, and ".EXE" on Windows, matching
+// the PATHEXT value set by the high-level CandidateBinaries tests above.
 func executableSuffix() string {
 	if runtime.GOOS == "windows" {
-		return ".exe"
+		return ".EXE"
 	}
 	return ""
 }

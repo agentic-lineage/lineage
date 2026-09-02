@@ -92,10 +92,17 @@ func LoadProjectConfig(path string) (ProjectConfig, error) {
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return ProjectConfig{}, fmt.Errorf("parse project config %s: %w", path, err)
 	}
-	// schema 0 means the config predates the schema field; treat that as
-	// schema 1, the only schema that ever existed before it was added -
-	// same rule packages.LoadManifest uses for lineage.yaml's schema field.
-	if cfg.Schema == 0 {
+	// An absent schema field and an explicit `schema: 0` both leave Schema
+	// at zero when decoded without defaults. Probe the field as a pointer so
+	// only the absent legacy field defaults to schema 1; zero was never a
+	// valid schema and must be rejected like any other unsupported value.
+	var probe struct {
+		Schema *int `yaml:"schema"`
+	}
+	if err := yaml.Unmarshal(data, &probe); err != nil {
+		return ProjectConfig{}, fmt.Errorf("parse project config %s: %w", path, err)
+	}
+	if probe.Schema == nil {
 		cfg.Schema = CurrentConfigSchema
 	}
 	if cfg.Schema != CurrentConfigSchema {
@@ -114,6 +121,12 @@ func LoadProjectConfig(path string) (ProjectConfig, error) {
 }
 
 func SaveProjectConfig(path string, cfg ProjectConfig) error {
+	// ProjectConfig values constructed by callers before schema versioning have
+	// the Go zero value here. Current writers must never persist an explicit
+	// schema zero, because loaders correctly reject it as unsupported.
+	if cfg.Schema == 0 {
+		cfg.Schema = CurrentConfigSchema
+	}
 	data, err := yaml.Marshal(cfg)
 	if err != nil {
 		return fmt.Errorf("encode project config: %w", err)

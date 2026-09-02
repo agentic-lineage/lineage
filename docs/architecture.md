@@ -39,7 +39,23 @@ The receiver should be able to inspect these contents before enabling a package.
 - `internal/runtime`: provider-neutral launch planning.
 - `internal/provider`: the provider registry, command resolution, and execution.
 - `internal/shim`: local command shims.
+- `internal/inventory`: a read-only, deterministic evidence inventory for a
+  workspace that is not yet a Lineage package. It classifies files and records
+  literal Markdown citations; it neither executes nor semantically interprets
+  source content.
 - `agenticlineage.vercel.app`: public website, package registry API, installer endpoint, package directory, and per-package bootstrap prompts. The website is the registry boundary: it verifies GitHub publisher identity, enforces package ownership and immutable `name@version` rows, rate-limits public routes, records aggregate package metrics, and proxies private package archives to receivers.
+
+## Product Scope
+
+The released product is the local package runtime. The next planned layer is
+behavior-preserving compilation of existing workspaces, beginning with
+`internal/inventory`; it is not yet a user-facing command or a promise that
+Lineage can recover every workflow's intent.
+
+Provider adapters are released only when their code has merged into `develop`.
+An open adapter pull request is not a compatibility claim. Enterprise context
+reuse, organization/team inheritance, and provider caching are research
+directions rather than current runtime behavior. See [ADR 0016](decisions/0016-prioritize-package-distribution-and-behavioral-compilation.md).
 
 ## Safety Model
 

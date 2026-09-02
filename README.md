@@ -196,6 +196,10 @@ The current adapters focus on Claude, Codex, and Windsurf. The package shape
 stays plain so future adapters can use the same manifest, skills, workflows,
 agents, policies, references, and setup material.
 
+For the contributor-facing work to compile an existing agent workspace into
+those portable artifacts, see
+[Compiling Existing Workspaces](docs/guides/compiling-existing-workspaces.md).
+
 Project configuration lives at `.lineage/config.yaml`.
 
 ```yaml
@@ -221,25 +225,23 @@ lineage init user
 lineage init workspace <name>
 
 lineage package init <name>
-lineage package validate <path>
+lineage package validate <path> [--yaml]
 lineage package export <path> [-o file.tgz]
 lineage package import <file.tgz> [--as name]
 
 lineage add <package-ref> [--yes]
-lineage package publish <path>
+lineage package publish <path> [--yes]
 lineage package pull <package-ref> [--as name]
 lineage login
 lineage logout
 lineage whoami
 
-lineage enable <package-path-or-id>
-lineage disable <package-path-or-id>
+lineage enable <package-path-or-id> [--yes]
+lineage disable <package-path-or-id> [--yes]
 lineage list
-lineage inspect <package-path-or-id>
-lineage run claude --dry-run
-lineage run codex --dry-run
-lineage run windsurf --dry-run
-lineage workflow run <workflow-name> <claude|codex|windsurf> [--dry-run] [--yes]
+lineage inspect <package-path-or-id> [--yaml]
+lineage run <claude|codex|windsurf> [--dry-run] [--yes] [-- provider args...]
+lineage workflow run <workflow-name> <claude|codex|windsurf> [--dry-run] [--yes] [-- provider args...]
 
 lineage install-shims
 lineage doctor
@@ -280,6 +282,7 @@ lineage enable resume-workflow
 
 - [What is a Lineage package?](docs/guides/lineage-package.md)
 - [How to share Claude Code and Codex workflows](docs/guides/share-agent-workflows.md)
+- [Compiling an existing agent workspace](docs/guides/compiling-existing-workspaces.md)
 - [Architecture and trust model](docs/architecture.md)
 - [Public docs and discoverability checklist](docs/discoverability.md)
 
