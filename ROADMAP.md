@@ -1,71 +1,73 @@
 # Roadmap
 
-This roadmap is intentionally limited to the public local package runtime.
+Lineage's current product is the local, provider-neutral package runtime:
+package a working agent environment, let another person inspect it, enable it
+locally with explicit approval, and run it through their own coding agent.
+
+This roadmap records shipped work and the ordered work that follows it. Issue
+and pull-request state remains the source of truth for individual tasks.
 
 ## Done
 
-- Package creation, enablement, and launch planning.
-- Manifest schema versioning, export authority, and content digests.
-- Secret scanning and path-traversal protection for package-controlled input.
-- `lineage package validate`, `lineage package export`, `lineage package import`.
-- Registry publish and pull backed by the Lineage website API.
-- `lineage add` as the one-command receiver path for published packages,
-  converging local `.tgz` archives and registry refs through the same
-  validate → inspect → setup → enable flow, idempotent on repeat.
-- GitHub device-flow login, logout, and publisher identity checks.
-- `lineage list`, `lineage disable`, `lineage inspect`, and `lineage doctor`.
-- Workflow execution through `lineage workflow run`.
-- Claude and Codex provider materialization, dry-run previews, and local shims.
-- Permission-gated materialization: enabling a package actually stages skills
-  into a provider's own directory and generates its context file, with an
-  explicit confirmation before anything is written.
-- Package-declared setup files/directories, created through their own
-  explicit permission-gated prompt.
-- Provider entrypoints and capabilities surfaced in the registry and on
-  package pages.
-- A portability report (blockers/warnings) computed during export and
-  publish.
-- The `.lineage` directory (project- and user-level state) designed as a
-  deliberate whole — every file enumerated, schema versioning decided,
-  a gitignore default, and a regenerable-vs-authoritative classification
-  (#59, ADR 0015).
+- Package creation, validation, deterministic export, untrusted import, and
+  digest verification.
+- Registry publishing and pulling through the Lineage website API, GitHub
+  publisher identity verification, immutable package versions, and `lineage
+  add` as the one-command receiver path.
+- Receiver controls: inspect-before-enable, permission-gated setup and
+  materialization, idempotent cleanup, dry runs, and `lineage doctor`.
+- Claude and Codex materialization, workflow-scoped runs, provider shims, and
+  provider-neutral launch planning.
+- The August consolidation pass: package-name validation, digest and secret
+  scanning fixes, atomic writes, safe archive extraction, and confirmation-flow
+  fixes. The remaining concurrency limitation is explicitly documented as an
+  accepted single-user CLI tradeoff (#170, #231).
+- Windows CI and the checked-in author-to-receiver end-to-end fixture (#174,
+  #207, #211).
+- The `.lineage` container specification, lineage graph, and content-addressed
+  snapshots (ADR 0013–0015).
+- A high-confidence Google API-key pattern in package secret scanning (#229).
+- Read-only source-workspace evidence inventory: deterministic classification,
+  content digests, and literal Markdown citation edges (#203).
 
-## Next
+## Now
 
-An August 2026 consolidation pass audited every shipped surface (CLI,
-package lifecycle, materialization/runtime, and the registry backend) for
-correctness and security bugs rather than new features, and filed the
-result as individual issues instead of one grab-bag. That work takes
-priority over new feature surface:
+1. **Integrate the current contribution queue without weakening package
+   semantics.** Review, rebase, test, and merge provider and diagnostics work
+   only when it remains behind the provider boundary. Open pull requests are
+   not release documentation:
+   - #215: Auggie adapter and provider-owned skill rendering. Before release,
+     align receiver documentation with Auggie's Node.js 22+ requirement and
+     make existing `SKILL.md` frontmatter handling robust to CRLF line endings.
+   - #210, #220–#222: Cursor, Aider, Cline, and Windsurf adapters.
+   - #219: extend `lineage doctor` using the `.lineage` container contract.
 
-- Critical/high fixes: unvalidated package names enabling path escapes
-  (#147), digest verification skipped on an empty registry response (#148),
-  a stdin-buffering bug that silently drops the second of two prompts in
-  one command (#149), `enable` persisting state before a later step that
-  can fail (#150), secret scanning gaps (#151, #152), `lineage add`
-  reporting success when nothing was enabled (#153), and no write path in
-  the codebase being crash-safe (#154).
-- The rest of that audit's medium/low findings are filed individually
-  (#155-#172) so they can be picked up independently; several are tagged
-  `good first issue`.
-- Add a Windows CI job (#174) so the shim `.cmd` generation and `PATHEXT`
-  binary-resolution code this repo already ships actually run somewhere
-  before merge, instead of only on ubuntu-latest.
-- Add an end-to-end integration fixture covering the full author-to-receiver
-  flow through the real CLI (#12).
-- Keep public docs synchronized across README, Wiki, Discussions, and the
-  website whenever the receiver flow changes.
-- Add automated drift checks for the bootstrap prompt copy embedded on package
-  pages.
+2. **Turn existing workspaces into reviewable packages.** #203 completed the
+   evidence-inventory stage. The next sequence is deliberately constrained:
+   behavioral model (#103), agent-assisted analysis (#104), provider-neutral
+   artifact compilation (#106), then portability and behavior validation
+   (#109, #113). The compiler must not execute source scripts or silently
+   invent missing behavior.
+
+3. **Close receiver trust and lifecycle gaps before broader distribution.**
+   Exact-version pinning is the current rollback path (#122). Define registry
+   trust states and version yanking (#123, #135), then build the smallest
+   useful safety policy and reporting surfaces (#127–#136).
+
+4. **Prove the loop with real packages and receivers.** Prioritize a small
+   package ecosystem, independent authors, receiver feedback, and contributor
+   adoption over adding speculative runtime layers.
+
+5. **Keep public surfaces synchronized.** When released receiver behavior
+   changes, update the README, guides, bootstrap prompt, safety model, website,
+   Wiki, Discussions, `llms.txt`, and package-page copy together.
 
 ## Later
 
-- Broaden provider adapter coverage (Cursor, Windsurf, Auggie, Cline, Aider,
-  GitHub Copilot) while keeping the core package format provider-neutral.
-- Add stronger capability enforcement if declarative capability visibility
-  is not enough for real receiver trust.
-- The "safety compliance" (#127-#142) and "compile existing workflows into
-  packages" (#101-#116) epics are deliberately parked here rather than in
-  Next: both are net-new feature surface, and the project's stated priority
-  right now is consolidating what's already shipped, not expanding it
-  further.
+- Additional provider adapters after the active queue has been integrated and
+  the adapter contract has held up in real use.
+- Stronger runtime capability enforcement if receiver evidence shows that
+  declared capability metadata is insufficient.
+- Enterprise context reuse, organization/team inheritance, provider caching,
+  and persistent context checkpoints. These are research directions, not
+  current Lineage commitments; see ADR 0016.
