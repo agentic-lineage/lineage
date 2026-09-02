@@ -253,8 +253,10 @@ func TestRunUnknownProviderListsKnownProviders(t *testing.T) {
 	if err == nil {
 		t.Fatal("Execute(run does-not-exist) error = nil, want error")
 	}
-	if !strings.Contains(stderr.String(), "claude") || !strings.Contains(stderr.String(), "codex") {
-		t.Fatalf("stderr = %q, want it to list known providers", stderr.String())
+	for _, name := range []string{"claude", "codex", "windsurf", "aider", "cline"} {
+		if !strings.Contains(stderr.String(), name) {
+			t.Fatalf("stderr = %q, want it to list known provider %q", stderr.String(), name)
+		}
 	}
 }
 
@@ -262,8 +264,13 @@ func TestUsageListsKnownProvidersNotHardcoded(t *testing.T) {
 	var stdout bytes.Buffer
 	printUsage(&stdout)
 	out := stdout.String()
-	if !strings.Contains(out, "claude") || !strings.Contains(out, "codex") {
-		t.Fatalf("usage = %q, want it to mention every registered provider", out)
+	for _, name := range []string{"claude", "codex", "windsurf", "aider", "cline"} {
+		if !strings.Contains(out, name) {
+			t.Fatalf("usage = %q, want it to mention registered provider %q", out, name)
+		}
+	}
+	if !strings.Contains(out, "put lineage in front of launchable providers on PATH") {
+		t.Fatalf("usage = %q, want install-shims help to describe launchable providers", out)
 	}
 }
 
@@ -871,6 +878,37 @@ func TestWorkflowRunClineMaterializesWithoutBinaryOrLaunch(t *testing.T) {
 	}
 	if !strings.Contains(string(content), "Active workflow: review-flow") {
 		t.Fatalf("Cline context = %s, want active workflow", content)
+	}
+}
+
+func TestWorkflowRunWindsurfMaterializesWithoutLaunching(t *testing.T) {
+	project, _ := setUpEnabledWorkflowProject(t)
+	cfg, err := config.LoadProjectConfig(config.ProjectConfigPath(project))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Providers = map[string]config.Provider{"windsurf": {Binary: filepath.Join(project, "must-not-launch")}}
+	if err := config.SaveProjectConfig(config.ProjectConfigPath(project), cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	oldWd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldWd) })
+	if err := os.Chdir(project); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if err := Execute(nil, []string{"workflow", "run", "review-flow", "windsurf", "--yes"}, nil, &stdout, &stderr); err != nil {
+		t.Fatalf("workflow run error = %v stderr=%s", err, stderr.String())
+	}
+	for _, skill := range []string{"gather", "review"} {
+		if _, err := os.Stat(filepath.Join(project, ".windsurf", "rules", "wf-pack-"+skill)); err != nil {
+			t.Fatalf("expected %s staged: %v", skill, err)
+		}
 	}
 }
 

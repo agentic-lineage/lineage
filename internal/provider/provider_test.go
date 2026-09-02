@@ -44,6 +44,18 @@ func TestResolveWithConfiguredBinary(t *testing.T) {
 	}
 }
 
+func TestResolveMaterializeOnlyProviderDoesNotResolveBinary(t *testing.T) {
+	plan, err := Resolve("windsurf", t.TempDir(), config.ProjectConfig{
+		Providers: map[string]config.Provider{"windsurf": {Binary: "/path/that/must-not-be-resolved"}},
+	}, []string{"--project"})
+	if err != nil {
+		t.Fatalf("Resolve(windsurf) error = %v", err)
+	}
+	if !plan.MaterializeOnly || plan.Binary != "" || len(plan.Args) != 1 || plan.Args[0] != "--project" {
+		t.Fatalf("Resolve(windsurf) = %#v, want materialization-only plan without binary", plan)
+	}
+}
+
 func TestCandidateBinariesFindsMultipleAndSkipsShim(t *testing.T) {
 	home := t.TempDir()
 	dirA := t.TempDir()

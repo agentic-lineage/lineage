@@ -6,6 +6,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/agentic-lineage/lineage/internal/provider"
 )
 
 func TestFileNamePOSIXHasNoExtension(t *testing.T) {
@@ -29,10 +31,16 @@ func TestInstallWritesShimsOnlyForLaunchableProviders(t *testing.T) {
 		t.Fatalf("Install() error = %v", err)
 	}
 
-	for _, name := range []string{"claude", "codex"} {
-		path := filepath.Join(home, "bin", FileName(name, runtime.GOOS))
+	for _, p := range provider.Known() {
+		if p.MaterializeOnly {
+			if _, err := os.Stat(filepath.Join(home, "bin", FileName(p.Name, runtime.GOOS))); !os.IsNotExist(err) {
+				t.Fatalf("expected no shim for materialization-only provider %s, stat error = %v", p.Name, err)
+			}
+			continue
+		}
+		path := filepath.Join(home, "bin", FileName(p.Name, runtime.GOOS))
 		if _, err := os.Stat(path); err != nil {
-			t.Fatalf("expected shim for %s at %s: %v", name, path, err)
+			t.Fatalf("expected shim for %s at %s: %v", p.Name, path, err)
 		}
 	}
 	if _, err := os.Stat(filepath.Join(home, "bin", FileName("cline", runtime.GOOS))); !os.IsNotExist(err) {

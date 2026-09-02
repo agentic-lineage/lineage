@@ -81,6 +81,48 @@ func TestBuildPlanClineDryRun(t *testing.T) {
 	}
 }
 
+func TestBuildPlanAiderDryRun(t *testing.T) {
+	project := t.TempDir()
+	home := t.TempDir()
+	cfg := config.ProjectConfig{Providers: map[string]config.Provider{"aider": {Binary: "/bin/echo"}}}
+	if err := config.SaveProjectConfig(config.ProjectConfigPath(project), cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	plan, err := BuildPlan("aider", project, home, nil)
+	if err != nil {
+		t.Fatalf("BuildPlan(aider) error = %v", err)
+	}
+	if !strings.Contains(plan.DryRunString(), "provider: aider") {
+		t.Fatalf("DryRunString() = %q, want Aider provider", plan.DryRunString())
+	}
+}
+
+func TestBuildPlanWindsurfDryRun(t *testing.T) {
+	project := t.TempDir()
+	home := t.TempDir()
+	cfg := config.ProjectConfig{
+		Providers: map[string]config.Provider{
+			"windsurf": {Binary: "/bin/echo"},
+		},
+	}
+	if err := config.SaveProjectConfig(config.ProjectConfigPath(project), cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	plan, err := BuildPlan("windsurf", project, home, nil)
+	if err != nil {
+		t.Fatalf("BuildPlan(windsurf) error = %v", err)
+	}
+	if !strings.Contains(plan.DryRunString(), "provider: windsurf") {
+		t.Fatalf("DryRunString() = %q, want Windsurf provider", plan.DryRunString())
+	}
+	if !strings.Contains(plan.DryRunString(), "real_binary: none") ||
+		!strings.Contains(plan.DryRunString(), "launch: disabled (config/materialization only)") {
+		t.Fatalf("DryRunString() = %q, want materialization-only plan", plan.DryRunString())
+	}
+}
+
 func mustWrite(t *testing.T, path string, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

@@ -37,8 +37,9 @@ const currentStateSchema = 1
 // provider, so a later call can remove entries that are no longer desired
 // (a package got disabled, a skill got removed) instead of only ever adding.
 type state struct {
-	Schema    int      `json:"schema"`
-	SkillDirs []string `json:"skill_dirs"` // relative to project root, sorted
+	Schema      int                  `json:"schema"`
+	SkillDirs   []string             `json:"skill_dirs"` // relative to project root, sorted
+	ConfigState provider.ConfigState `json:"config_state,omitempty"`
 }
 
 func statePath(projectRoot, providerName string) string {
@@ -131,8 +132,25 @@ func apply(projectRoot string, adapter provider.Provider, pkgs []packages.Packag
 	if err := writeSummary(filepath.Join(projectRoot, adapter.ContextFile), pkgs, wf); err != nil {
 		return fmt.Errorf("update %s: %w", adapter.ContextFile, err)
 	}
+	configState := prev.ConfigState
+	if adapter.Config != nil {
+		if len(pkgs) == 0 {
+			if err := adapter.Config.Remove(projectRoot, prev.ConfigState); err != nil {
+				return err
+			}
+			configState = provider.ConfigState{}
+		} else {
+			current, err := adapter.Config.Ensure(projectRoot)
+			if err != nil {
+				return err
+			}
+			if len(current.Managed) > 0 {
+				configState = current
+			}
+		}
+	}
 
-	return saveState(projectRoot, adapter.Name, state{Schema: currentStateSchema, SkillDirs: written})
+	return saveState(projectRoot, adapter.Name, state{Schema: currentStateSchema, SkillDirs: written, ConfigState: configState})
 }
 
 // NeedsApproval reports whether calling Apply with pkgs would change
@@ -160,7 +178,14 @@ func NeedsApproval(projectRoot string, adapter provider.Provider, pkgs []package
 	prevDirs := append([]string(nil), prev.SkillDirs...)
 	sort.Strings(prevDirs)
 
-	return !equalStrings(desiredDirs, prevDirs), nil
+	configNeedsApproval := false
+	if adapter.Config != nil {
+		configNeedsApproval, err = adapter.Config.NeedsApproval(projectRoot, prev.ConfigState, len(pkgs) > 0)
+		if err != nil {
+			return false, err
+		}
+	}
+	return !equalStrings(desiredDirs, prevDirs) || configNeedsApproval, nil
 }
 
 // NeedsApprovalForWorkflow is NeedsApproval scoped to a single workflow's

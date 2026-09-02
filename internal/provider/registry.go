@@ -18,11 +18,32 @@ type Provider struct {
 	SkillsDir       string
 	ContextFile     string
 	MaterializeOnly bool
+	Config          ConfigAdapter
+}
+
+// ConfigState records a provider-specific project configuration edit so the
+// materializer can reverse only the content it added. Adapters own the file
+// syntax; the core only persists and passes this state through.
+type ConfigState struct {
+	FileExisted bool     `json:"file_existed"`
+	CreatedFile bool     `json:"created_file"`
+	Original    []string `json:"original,omitempty"`
+	Managed     []string `json:"managed,omitempty"`
+}
+
+// ConfigAdapter describes optional project-scoped configuration that connects
+// a provider's generated context file to its native configuration.
+type ConfigAdapter interface {
+	Ensure(projectRoot string) (ConfigState, error)
+	Remove(projectRoot string, state ConfigState) error
+	NeedsApproval(projectRoot string, state ConfigState, desired bool) (bool, error)
 }
 
 var registry = []Provider{
 	{Name: "claude", SkillsDir: filepath.Join(".claude", "skills"), ContextFile: "CLAUDE.md"},
 	{Name: "codex", SkillsDir: filepath.Join(".agents", "skills"), ContextFile: "AGENTS.md"},
+	{Name: "windsurf", SkillsDir: filepath.Join(".windsurf", "rules"), ContextFile: ".windsurfrules", MaterializeOnly: true},
+	{Name: "aider", SkillsDir: filepath.Join(".aider", "skills"), ContextFile: "CONVENTIONS.md", Config: AiderConfigAdapter{}},
 	{Name: "cline", SkillsDir: ".clinerules", ContextFile: filepath.Join(".clinerules", "lineage.md"), MaterializeOnly: true},
 }
 

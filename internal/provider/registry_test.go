@@ -36,6 +36,26 @@ func TestGetClineProvider(t *testing.T) {
 	}
 }
 
+func TestGetAiderProvider(t *testing.T) {
+	p, err := Get("aider")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.SkillsDir != filepath.Join(".aider", "skills") || p.ContextFile != "CONVENTIONS.md" || p.Config == nil {
+		t.Fatalf("Get(aider) = %#v, want Aider conventions and config paths", p)
+	}
+}
+
+func TestGetWindsurfProvider(t *testing.T) {
+	p, err := Get("windsurf")
+	if err != nil {
+		t.Fatalf("Get(windsurf) error = %v", err)
+	}
+	if p.SkillsDir != filepath.Join(".windsurf", "rules") || p.ContextFile != ".windsurfrules" || !p.MaterializeOnly {
+		t.Fatalf("Get(windsurf) = %#v, want project-scoped Windsurf paths", p)
+	}
+}
+
 func TestGetUnknownProviderListsKnownNames(t *testing.T) {
 	_, err := Get("nope")
 	if err == nil {

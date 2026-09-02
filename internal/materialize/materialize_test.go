@@ -199,6 +199,198 @@ func TestApplyStagesSkillsForClineAdapter(t *testing.T) {
 	}
 }
 
+func TestApplyStagesSkillsAndConfigForAiderAdapter(t *testing.T) {
+	root := t.TempDir()
+	pkg := buildTestPackage(t, "review-pack", "review")
+	aider, err := provider.Get("aider")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Apply(root, aider, []packages.Package{pkg}); err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+
+	skillFile := filepath.Join(root, ".aider", "skills", "review-pack-review", "SKILL.md")
+	if _, err := os.Stat(skillFile); err != nil {
+		t.Fatalf("expected staged skill at %s: %v", skillFile, err)
+	}
+
+	conventions, err := os.ReadFile(filepath.Join(root, "CONVENTIONS.md"))
+	if err != nil {
+		t.Fatalf("read Aider conventions: %v", err)
+	}
+	if !containsAll(string(conventions), beginMarker, endMarker, "review-pack@0.1.0") {
+		t.Fatalf("Aider conventions missing expected content:\n%s", conventions)
+	}
+
+	configData, err := os.ReadFile(filepath.Join(root, ".aider.conf.yml"))
+	if err != nil {
+		t.Fatalf("read Aider config: %v", err)
+	}
+	if !strings.Contains(string(configData), "read:") || !strings.Contains(string(configData), "CONVENTIONS.md") {
+		t.Fatalf("Aider config missing conventions read entry:\n%s", configData)
+	}
+}
+
+func TestApplyStagesSkillsForWindsurfAdapter(t *testing.T) {
+	root := t.TempDir()
+	pkg := buildTestPackage(t, "review-pack", "review")
+	windsurf, err := provider.Get("windsurf")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Apply(root, windsurf, []packages.Package{pkg}); err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+
+	skillFile := filepath.Join(root, ".windsurf", "rules", "review-pack-review", "SKILL.md")
+	if _, err := os.Stat(skillFile); err != nil {
+		t.Fatalf("expected staged skill at %s: %v", skillFile, err)
+	}
+
+	contextData, err := os.ReadFile(filepath.Join(root, ".windsurfrules"))
+	if err != nil {
+		t.Fatalf("read Windsurf context file: %v", err)
+	}
+	content := string(contextData)
+	if !containsAll(content, beginMarker, endMarker, "review-pack@0.1.0") {
+		t.Fatalf("Windsurf context missing expected content:\n%s", content)
+	}
+}
+
+func TestAiderConfigPreservesCommentsAndSupportsScalarRead(t *testing.T) {
+	root := t.TempDir()
+	pkg := buildTestPackage(t, "review-pack", "review")
+	original := "# keep this comment\nread: custom_rules.md\n# keep this formatting\nfoo: bar\n"
+	if err := os.WriteFile(filepath.Join(root, ".aider.conf.yml"), []byte(original), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	aider, _ := provider.Get("aider")
+	if err := Apply(root, aider, []packages.Package{pkg}); err != nil {
+		t.Fatalf("Apply() with scalar read error = %v", err)
+	}
+	got, err := os.ReadFile(filepath.Join(root, ".aider.conf.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(got)
+	if !containsAll(content, "# keep this comment", "# keep this formatting", "foo: bar", "custom_rules.md", "CONVENTIONS.md") {
+		t.Fatalf("Aider config lost content while linking conventions:\n%s", content)
+	}
+}
+
+func TestAiderConfigListDoesNotDuplicateConventions(t *testing.T) {
+	root := t.TempDir()
+	pkg := buildTestPackage(t, "review-pack", "review")
+	original := "read:\n  - custom_rules.md\n  - CONVENTIONS.md\n"
+	if err := os.WriteFile(filepath.Join(root, ".aider.conf.yml"), []byte(original), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	aider, _ := provider.Get("aider")
+	if err := Apply(root, aider, []packages.Package{pkg}); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := os.ReadFile(filepath.Join(root, ".aider.conf.yml"))
+	if strings.Count(string(got), "CONVENTIONS.md") != 1 {
+		t.Fatalf("Aider config duplicated conventions entry:\n%s", got)
+	}
+}
+
+func TestAiderConfigFlowListPreservesEntries(t *testing.T) {
+	root := t.TempDir()
+	original := "read: [custom_rules.md]\nfoo: bar\n"
+	if err := os.WriteFile(filepath.Join(root, ".aider.conf.yml"), []byte(original), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	aider, _ := provider.Get("aider")
+	state, err := aider.Config.Ensure(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := os.ReadFile(filepath.Join(root, ".aider.conf.yml"))
+	content := string(got)
+	if !strings.Contains(content, "read: [custom_rules.md, CONVENTIONS.md]") || !strings.Contains(content, "foo: bar") {
+		t.Fatalf("flow-list Aider config was not preserved: %s", content)
+	}
+	if err := aider.Config.Remove(root, state); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = os.ReadFile(filepath.Join(root, ".aider.conf.yml"))
+	if string(got) != original {
+		t.Fatalf("flow-list Aider config was not restored: got %q want %q", got, original)
+	}
+}
+
+func TestAiderConfigQuotedListDoesNotDuplicateConventions(t *testing.T) {
+	root := t.TempDir()
+	original := "read:\n  - \"CONVENTIONS.md\"\n  - custom_rules.md\n"
+	if err := os.WriteFile(filepath.Join(root, ".aider.conf.yml"), []byte(original), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	aider, _ := provider.Get("aider")
+	if state, err := aider.Config.Ensure(root); err != nil {
+		t.Fatal(err)
+	} else if len(state.Managed) != 0 {
+		t.Fatalf("quoted conventions entry caused a rewrite: %#v", state)
+	}
+	got, _ := os.ReadFile(filepath.Join(root, ".aider.conf.yml"))
+	if string(got) != original {
+		t.Fatalf("quoted-list Aider config changed: got %q want %q", got, original)
+	}
+}
+
+func TestAiderConfigCleanupAndApproval(t *testing.T) {
+	root := t.TempDir()
+	pkg := buildTestPackage(t, "review-pack", "review")
+	aider, _ := provider.Get("aider")
+	needs, err := NeedsApproval(root, aider, []packages.Package{pkg})
+	if err != nil || !needs {
+		t.Fatalf("NeedsApproval() before Aider materialization = %v, %v; want true", needs, err)
+	}
+	if err := Apply(root, aider, []packages.Package{pkg}); err != nil {
+		t.Fatal(err)
+	}
+	needs, err = NeedsApproval(root, aider, []packages.Package{pkg})
+	if err != nil || needs {
+		t.Fatalf("NeedsApproval() after Aider materialization = %v, %v; want false", needs, err)
+	}
+	if err := os.Remove(filepath.Join(root, ".aider.conf.yml")); err != nil {
+		t.Fatal(err)
+	}
+	needs, err = NeedsApproval(root, aider, []packages.Package{pkg})
+	if err != nil || !needs {
+		t.Fatalf("NeedsApproval() after removing Aider config = %v, %v; want true", needs, err)
+	}
+	if err := Apply(root, aider, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".aider.conf.yml")); !os.IsNotExist(err) {
+		t.Fatalf("expected Lineage-created Aider config cleanup, stat error = %v", err)
+	}
+}
+
+func TestAiderConfigCleanupPreservesExistingConfig(t *testing.T) {
+	root := t.TempDir()
+	pkg := buildTestPackage(t, "review-pack", "review")
+	original := "# keep\nfoo: bar\n"
+	if err := os.WriteFile(filepath.Join(root, ".aider.conf.yml"), []byte(original), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	aider, _ := provider.Get("aider")
+	if err := Apply(root, aider, []packages.Package{pkg}); err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(root, aider, nil); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := os.ReadFile(filepath.Join(root, ".aider.conf.yml"))
+	if string(got) != original {
+		t.Fatalf("existing Aider config was not restored:\n got %q\nwant %q", got, original)
+	}
+}
+
 func TestApplyKeepsProvidersIsolated(t *testing.T) {
 	root := t.TempDir()
 	pkg := buildTestPackage(t, "review-pack", "review")

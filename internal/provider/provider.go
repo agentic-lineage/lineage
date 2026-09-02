@@ -27,6 +27,7 @@ func Resolve(name, lineageHome string, project config.ProjectConfig, args []stri
 	if adapter.MaterializeOnly {
 		return Plan{Name: name, Args: append([]string{}, args...), MaterializeOnly: true}, nil
 	}
+
 	cfg := project.Providers[name]
 	binary := cfg.Binary
 	if binary == "" {

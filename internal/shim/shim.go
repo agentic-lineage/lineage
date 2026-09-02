@@ -10,10 +10,8 @@ import (
 	"github.com/agentic-lineage/lineage/internal/provider"
 )
 
-// Install writes a shim for every registered provider (internal/provider's
-// registry is the single source of truth for provider names - adding a
-// provider there is enough to get a shim for it here too) into home's shim
-// directory, in the format the current OS actually runs.
+// Install writes a shim for every registered launchable provider into home's
+// shim directory, in the format the current OS actually runs.
 func Install(home, lineageBinary string) error {
 	binDir := filepath.Join(home, "bin")
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
