@@ -69,7 +69,7 @@ func Execute(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 	case "init":
 		return runInit(args[1:], home, stdout, stderr)
 	case "package":
-		return runPackage(args[1:], home, stdout, stderr)
+		return runPackage(args[1:], home, in, stdout, stderr)
 	case "add":
 		return runAdd(args[1:], home, in, stdout, stderr)
 	case "enable":
@@ -160,7 +160,7 @@ Commands:
   validate <path>                 check schema, safety, and exports
   export <path> [-o file.tgz]     write a deterministic archive
   import <file.tgz> [--as name]   install an archive locally
-  publish <path>                  publish to the Lineage registry
+  publish <path> [--yes]          publish to the Lineage registry
   pull <ref> [--as name]          fetch a published package
 
 Run 'lineage package <command> --help' for details on one command.`
@@ -178,7 +178,7 @@ func hasHelpFlag(args []string) bool {
 	return slices.ContainsFunc(args, isHelpFlag)
 }
 
-func runPackage(args []string, home string, stdout, stderr io.Writer) error {
+func runPackage(args []string, home string, stdin *bufio.Reader, stdout, stderr io.Writer) error {
 	//   Can't call hasHelpFlag here, otherwise general lineage package help
 	// would be printed
 	if len(args) > 0 && isHelpFlag(args[0]) {
@@ -186,7 +186,7 @@ func runPackage(args []string, home string, stdout, stderr io.Writer) error {
 		return nil
 	}
 	if len(args) < 2 {
-		err := fmt.Errorf("usage: lineage package init <name> | lineage package validate <path> | lineage package export <path> [-o file.tgz] | lineage package import <file.tgz> [--as name] | lineage package publish <path> | lineage package pull <package-ref> [--as name]")
+		err := fmt.Errorf("usage: lineage package init <name> | lineage package validate <path> | lineage package export <path> [-o file.tgz] | lineage package import <file.tgz> [--as name] | lineage package publish <path> [--yes] | lineage package pull <package-ref> [--as name]")
 		fmt.Fprintln(stderr, err)
 		return err
 	}
@@ -240,7 +240,7 @@ func runPackage(args []string, home string, stdout, stderr io.Writer) error {
 	case "import":
 		return runPackageImport(args[1:], home, stdout, stderr)
 	case "publish":
-		return runPackagePublish(args[1:], home, stdout, stderr)
+		return runPackagePublish(args[1:], home, stdin, stdout, stderr)
 	case "pull":
 		return runPackagePull(args[1:], home, stdout, stderr)
 	default:
@@ -250,13 +250,22 @@ func runPackage(args []string, home string, stdout, stderr io.Writer) error {
 	}
 }
 
-func runPackagePublish(args []string, home string, stdout, stderr io.Writer) error {
+func runPackagePublish(args []string, home string, stdin *bufio.Reader, stdout, stderr io.Writer) error {
 	if hasHelpFlag(args) {
-		fmt.Fprintln(stdout, "usage: lineage package publish <path>\n\nValidate and publish a package to the Lineage registry, identified by the GitHub login from `lineage login` (or LINEAGE_PUBLISH_TOKEN). The first publish of a name claims it; later publishes need the same identity.")
+		fmt.Fprintln(stdout, "usage: lineage package publish <path> [--yes]\n\nValidate and publish a package to the Lineage registry, identified by the GitHub login from `lineage login` (or LINEAGE_PUBLISH_TOKEN). The first publish of a name claims it; later publishes need the same identity.")
 		return nil
 	}
-	if len(args) != 1 {
-		err := fmt.Errorf("usage: lineage package publish <path>")
+	yes := false
+	pathArgs := make([]string, 0, len(args))
+	for _, a := range args {
+		if a == "--yes" || a == "-y" {
+			yes = true
+			continue
+		}
+		pathArgs = append(pathArgs, a)
+	}
+	if len(pathArgs) != 1 {
+		err := fmt.Errorf("usage: lineage package publish <path> [--yes]")
 		fmt.Fprintln(stderr, err)
 		return err
 	}
@@ -272,8 +281,16 @@ func runPackagePublish(args []string, home string, stdout, stderr io.Writer) err
 		return err
 	}
 
+	if !yes {
+		fmt.Fprintf(stdout, "Publish package at %s to the Lineage registry? [y/N] ", pathArgs[0])
+		if !confirm(stdin) {
+			fmt.Fprintln(stdout, "aborted")
+			return nil
+		}
+	}
+
 	cfg := packages.RegistryConfig{URL: os.Getenv("LINEAGE_REGISTRY_URL"), Token: token}
-	result, err := packages.Publish(filepath.Clean(args[0]), cfg)
+	result, err := packages.Publish(filepath.Clean(pathArgs[0]), cfg)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return err
@@ -1180,6 +1197,9 @@ func runProvider(ctx context.Context, args []string, home string, stdin *bufio.R
 		fmt.Fprintln(stderr, err)
 		return err
 	}
+	if plan.ProviderPlan.MaterializeOnly {
+		return nil
+	}
 
 	if err := provider.Launch(plan.ProviderPlan); err != nil {
 		fmt.Fprintln(stderr, err)
@@ -1264,6 +1284,9 @@ func runWorkflow(args []string, home string, stdin *bufio.Reader, stdout, stderr
 		fmt.Fprintln(stderr, err)
 		return err
 	}
+	if providerPlan.MaterializeOnly {
+		return nil
+	}
 
 	if err := provider.Launch(providerPlan); err != nil {
 		fmt.Fprintln(stderr, err)
@@ -1279,6 +1302,12 @@ func workflowPlanString(wf packages.Workflow, pkg packages.Package, providerName
 	fmt.Fprintf(&b, "package: %s@%s\n", pkg.Manifest.Name, pkg.Manifest.Version)
 	fmt.Fprintf(&b, "provider: %s\n", providerName)
 	fmt.Fprintf(&b, "real_binary: %s\n", emptyValue(providerPlan.Binary))
+	fmt.Fprintf(&b, "args: %s\n", strings.Join(providerPlan.Args, " "))
+	if providerPlan.MaterializeOnly {
+		fmt.Fprintf(&b, "launch: disabled (config/materialization only)\n")
+	} else {
+		fmt.Fprintf(&b, "launch: enabled\n")
+	}
 	fmt.Fprintf(&b, "steps:\n")
 	for i, step := range wf.Steps {
 		fmt.Fprintf(&b, "  %d. %s\n", i+1, step)
@@ -1416,8 +1445,8 @@ func pathIndexOf(pathEntries []string, dir string) int {
 
 func printUsage(w io.Writer) {
 	fmt.Fprintln(w, strings.TrimSpace(fmt.Sprintf(`
-Lineage - package a working agent setup, share it, and run it through your
-own Claude, Codex, or Auggie.
+Lineage - package a working agent setup, share it, and run it through a
+supported agent provider.
 
 Usage:
   lineage <command> [arguments]
@@ -1433,7 +1462,7 @@ Registry:
   login                                   authorize with GitHub (device flow)
   logout                                  clear the stored credential
   whoami                                  show who publish/pull will act as
-  package publish <path>                  publish to the Lineage registry
+  package publish <path> [--yes]          publish to the Lineage registry
   package pull <ref> [--as name]          fetch a published package
 
 Using a package:
@@ -1442,13 +1471,13 @@ Using a package:
   list                                    show enabled packages
   inspect <path-or-id> [--yaml]            show a package's contents
   graph list [--yaml]                      show what this project's state descends from
-  run <%s> [--dry-run] [--yes]  launch a provider with packages applied
+  run <%s> [--dry-run] [--yes]  apply packages and launch where supported
   workflow run <name> <%s>      run one declared workflow
 
 Setup:
   init user                               create the user package directory
   init workspace <name>                   create a shared workspace
-  install-shims                           put lineage in front of claude/codex/auggie on PATH
+  install-shims                           put lineage in front of launchable providers on PATH
   doctor                                  check config, PATH, and provider setup
 
   -h, --help                              show this help

@@ -8,6 +8,8 @@ body:
       value: |
         Keep proposals focused on local agent package distribution. Please avoid including private workflow content.
 
+        Maintainers set priority, readiness, blockers, and milestones during triage.
+
         Before opening a PR for this issue, assign the issue to yourself. PRs should link an assigned issue.
   - type: textarea
     id: problem

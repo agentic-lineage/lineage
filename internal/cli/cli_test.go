@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -12,7 +13,30 @@ import (
 	"github.com/agentic-lineage/lineage/internal/provider"
 )
 
-func TestEnableAndDryRunForEveryProvider(t *testing.T) {
+// noopProviderBinary returns the path to an OS-appropriate fake provider
+// executable that exits successfully doing nothing. Tests that only build
+// a --dry-run plan can use any string as Binary since it's never actually
+// run, but tests that let `lineage run`/`workflow run` proceed to
+// provider.Launch need a binary that genuinely executes on the current
+// OS - "/bin/echo" doesn't exist on Windows.
+func noopProviderBinary(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	if runtime.GOOS == "windows" {
+		path := filepath.Join(dir, "fake-provider.cmd")
+		if err := os.WriteFile(path, []byte("@echo off\r\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	path := filepath.Join(dir, "fake-provider.sh")
+	if err := os.WriteFile(path, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestEnableAndDryRun(t *testing.T) {
 	tmp := t.TempDir()
 	home := filepath.Join(tmp, "home")
 	project := filepath.Join(tmp, "project")
@@ -73,7 +97,12 @@ func TestEnableAndDryRunForEveryProvider(t *testing.T) {
 			}
 
 			output := stdout.String()
-			if !strings.Contains(output, "real_binary: /bin/echo") {
+
+			if adapter.MaterializeOnly {
+				if !strings.Contains(output, "launch: disabled (config/materialization only)") {
+					t.Errorf("dry-run output does not report materialization-only provider:\n%s", output)
+				}
+			} else if !strings.Contains(output, "real_binary: /bin/echo") {
 				t.Errorf("dry-run output does not name configured binary:\n%s", output)
 			}
 
@@ -253,7 +282,7 @@ func TestRunUnknownProviderListsKnownProviders(t *testing.T) {
 
 	for _, adapter := range provider.Known() {
 		if !strings.Contains(stderr.String(), adapter.Name) {
-			t.Fatalf("stderr = %q, want it to list known providers", stderr.String())
+			t.Fatalf("stderr = %q, want it to list known providers %q", stderr.String(), adapter.Name)
 		}
 	}
 }
@@ -267,6 +296,10 @@ func TestUsageListsKnownProvidersNotHardcoded(t *testing.T) {
 		if !strings.Contains(out, adapter.Name) {
 			t.Fatalf("usage = %q, want it to mention every registered provider", out)
 		}
+	}
+
+	if !strings.Contains(out, "put lineage in front of launchable providers on PATH") {
+		t.Fatalf("usage = %q, want install-shims help to describe launchable providers", out)
 	}
 }
 
@@ -310,7 +343,7 @@ func setUpEnabledProject(t *testing.T) (project, home string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg.Providers = map[string]config.Provider{"claude": {Binary: "/bin/echo"}}
+	cfg.Providers = map[string]config.Provider{"claude": {Binary: noopProviderBinary(t)}}
 	if err := config.SaveProjectConfig(config.ProjectConfigPath(project), cfg); err != nil {
 		t.Fatal(err)
 	}
@@ -346,6 +379,29 @@ func TestRunApprovedMaterializes(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(project, ".claude", "skills", "agent-pack-hello", "SKILL.md")); err != nil {
 		t.Fatalf("expected materialized skill, stat err = %v", err)
+	}
+}
+
+func TestRunClineMaterializesWithoutBinaryOrLaunch(t *testing.T) {
+	project, _ := setUpEnabledProject(t)
+	cfg, err := config.LoadProjectConfig(config.ProjectConfigPath(project))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Providers = map[string]config.Provider{}
+	if err := config.SaveProjectConfig(config.ProjectConfigPath(project), cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if err := Execute(nil, []string{"run", "cline", "--yes"}, nil, &stdout, &stderr); err != nil {
+		t.Fatalf("Cline run error = %v stderr=%s", err, stderr.String())
+	}
+	if _, err := os.Stat(filepath.Join(project, ".clinerules", "lineage.md")); err != nil {
+		t.Fatalf("expected Cline context materialization: %v", err)
+	}
+	if strings.Contains(stderr.String(), "binary") || strings.Contains(stdout.String(), "launch failed") {
+		t.Fatalf("Cline run attempted launch: stdout=%q stderr=%q", stdout.String(), stderr.String())
 	}
 }
 
@@ -781,7 +837,7 @@ func setUpEnabledWorkflowProject(t *testing.T) (project, home string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg.Providers = map[string]config.Provider{"claude": {Binary: "/bin/echo"}}
+	cfg.Providers = map[string]config.Provider{"claude": {Binary: noopProviderBinary(t)}}
 	if err := config.SaveProjectConfig(config.ProjectConfigPath(project), cfg); err != nil {
 		t.Fatal(err)
 	}
@@ -819,6 +875,69 @@ func TestWorkflowRunMaterializesOnlyItsSteps(t *testing.T) {
 	}
 	if !strings.Contains(string(content), "Active workflow: review-flow") {
 		t.Fatalf("CLAUDE.md = %s, want the active workflow sequence", content)
+	}
+}
+
+func TestWorkflowRunClineMaterializesWithoutBinaryOrLaunch(t *testing.T) {
+	project, _ := setUpEnabledWorkflowProject(t)
+	cfg, err := config.LoadProjectConfig(config.ProjectConfigPath(project))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Providers = map[string]config.Provider{}
+	if err := config.SaveProjectConfig(config.ProjectConfigPath(project), cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if err := Execute(nil, []string{"workflow", "run", "review-flow", "cline", "--dry-run"}, nil, &stdout, &stderr); err != nil {
+		t.Fatalf("Cline workflow dry-run error = %v stderr=%s", err, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "real_binary: none") || !strings.Contains(stdout.String(), "launch: disabled (config/materialization only)") {
+		t.Fatalf("Cline workflow dry-run = %q, want materialization-only output", stdout.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if err := Execute(nil, []string{"workflow", "run", "review-flow", "cline", "--yes"}, nil, &stdout, &stderr); err != nil {
+		t.Fatalf("Cline workflow run error = %v stderr=%s", err, stderr.String())
+	}
+	content, err := os.ReadFile(filepath.Join(project, ".clinerules", "lineage.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(content), "Active workflow: review-flow") {
+		t.Fatalf("Cline context = %s, want active workflow", content)
+	}
+}
+
+func TestWorkflowRunWindsurfMaterializesWithoutLaunching(t *testing.T) {
+	project, _ := setUpEnabledWorkflowProject(t)
+	cfg, err := config.LoadProjectConfig(config.ProjectConfigPath(project))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Providers = map[string]config.Provider{"windsurf": {Binary: filepath.Join(project, "must-not-launch")}}
+	if err := config.SaveProjectConfig(config.ProjectConfigPath(project), cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	oldWd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldWd) })
+	if err := os.Chdir(project); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if err := Execute(nil, []string{"workflow", "run", "review-flow", "windsurf", "--yes"}, nil, &stdout, &stderr); err != nil {
+		t.Fatalf("workflow run error = %v stderr=%s", err, stderr.String())
+	}
+	for _, skill := range []string{"gather", "review"} {
+		if _, err := os.Stat(filepath.Join(project, ".windsurf", "rules", "wf-pack-"+skill)); err != nil {
+			t.Fatalf("expected %s staged: %v", skill, err)
+		}
 	}
 }
 

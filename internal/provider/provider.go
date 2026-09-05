@@ -12,17 +12,25 @@ import (
 )
 
 type Plan struct {
-	Name   string
-	Binary string
-	Args   []string
-	Env    []string
+	Name            string
+	Binary          string
+	Args            []string
+	Env             []string
+	MaterializeOnly bool
 }
 
 func Resolve(name, lineageHome string, project config.ProjectConfig, args []string) (Plan, error) {
+	adapter, err := Get(name)
+	if err != nil {
+		return Plan{}, err
+	}
+	if adapter.MaterializeOnly {
+		return Plan{Name: name, Args: append([]string{}, args...), MaterializeOnly: true}, nil
+	}
+
 	cfg := project.Providers[name]
 	binary := cfg.Binary
 	if binary == "" {
-		var err error
 		binary, err = findRealBinary(name, lineageHome)
 		if err != nil {
 			return Plan{}, err

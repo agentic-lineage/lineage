@@ -59,7 +59,7 @@ func TestPlanSetupRejectsUnsafePaths(t *testing.T) {
 	root := t.TempDir()
 	for _, setup := range []Setup{
 		{Files: []SetupFile{{Path: "../escape.csv"}}},
-		{Files: []SetupFile{{Path: "/etc/passwd"}}},
+		{Files: []SetupFile{{Path: unsafeAbsolutePath(root)}}},
 		{Directories: []SetupDirectory{{Path: "../escape-dir"}}},
 	} {
 		if _, err := PlanSetup(root, setup); err == nil {

@@ -7,6 +7,8 @@
 - Package enablement can be idempotent and safe for repeated runs.
 - Provider-specific launch behavior can stay behind explicit adapter boundaries.
 - A package can move to another machine (export, then import) and reconstruct exactly, without the receiver having to trust the archive's origin.
+- A messy agent workspace can be inventoried deterministically without
+  executing or mutating its source files.
 
 ## Current Tests
 
@@ -22,11 +24,21 @@
 - Repeated enablement and materialization idempotency: re-running never duplicates staged content, and a shrinking package set is cleaned up exactly (`internal/materialize/materialize_test.go`).
 - Workflow execution scoped to only a workflow's declared steps, and reversibility with a plain full `lineage run` afterward (`internal/materialize/workflow_test.go`).
 - Provider launch planning, and a single provider registry with no hardcoded provider names outside `internal/provider` (`internal/provider/registry_test.go`).
-- Cross-platform path/shim behavior: POSIX and Windows shim generation and content, and Windows binary resolution via `PATHEXT` — verified as pure, OS-parameterized functions rather than requiring an actual Windows machine (`internal/shim/shim_test.go`, `internal/provider/provider_test.go`).
+- Cross-platform path/shim behavior on both Ubuntu and Windows CI, including
+  Windows shim generation and `PATHEXT` binary resolution (`.github/workflows/test.yml`).
 - Shim creation and `lineage doctor` diagnostics (config validity, shim `PATH` placement, ambiguous provider binaries).
 - Runtime plan rendering.
+- End-to-end receiver flow through the real CLI: package → export → import →
+  inspect → enable → run → workflow run → disable → doctor
+  (`tests/receiver_flow_test.go`).
+- Source-workspace inventory: deterministic results, ignored directories,
+  symlink refusal, file classification, self-describing literal citations,
+  path-boundary handling, and messy-workspace fixtures
+  (`internal/inventory/*_test.go`).
 
 ## Needed Tests
 
-- Real Windows CI verification of the shim/`PATHEXT` logic above (tracked in the CI integration coverage work) — the current coverage proves the algorithm's logic against controlled inputs, not an actual Windows shell.
-- End-to-end integration coverage exercising a full receiver flow (package → export → import → enable → run) as a single checked-in fixture, rather than the same steps split across several unit-level tests.
+- Behavioral-model, compiler, portability, and model-to-artifact validation
+  coverage for the workflow-compilation pipeline (#103–#116).
+- End-to-end registry coverage against a disposable test registry; the current
+  receiver fixture covers the real CLI's local archive path.

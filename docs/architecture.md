@@ -6,13 +6,13 @@ Lineage is a local runtime for distributing agent environment packages.
 
 - A package is a folder with a `lineage.yaml` manifest and optional native assets such as skills, workflows, agents, policies, references, and provider adapters. The manifest carries a `schema` version and a content digest, and can declare exports and capabilities explicitly.
 - A project enables packages through `.lineage/config.yaml`.
-- Enabling a package doesn't just plan a launch — running a provider materializes it: skills are staged into that provider's own discovery directory (e.g. `.claude/skills/`), and a generated section is written into its context file (e.g. `CLAUDE.md`), tracked per-provider so re-running stays idempotent. This is gated behind an explicit confirmation the first time it would actually change anything.
+- Enabling a package doesn't just plan a launch — running a provider materializes it: skills are staged into that provider's own discovery directory (e.g. `.claude/skills/`, `.windsurf/rules/`, `.aider/skills/`, or `.clinerules/`), and a generated section is written into its context file, tracked per-provider so re-running stays idempotent. This is gated behind an explicit confirmation the first time it would actually change anything.
 - A package can be exported to a deterministic `.tgz` archive and imported on another machine; import re-validates the extracted content exactly as `lineage package validate` would, rather than trusting the archive because it parsed.
-- A package can also be published to the Lineage registry through the website API. The CLI validates and exports the package locally, uploads through `lineage package publish`, and later resolves a registry ref by name or exact version. The website stores and serves package artifacts; the CLI still treats downloaded archives as untrusted and verifies the content digest before keeping them.
+- A package can also be published to the Lineage registry through the website API. The CLI validates and exports the package locally, uploads through `lineage package publish`, and later resolves a registry ref by name or exact version. The website stores metadata and aggregate metrics in Supabase Postgres, keeps immutable archives in a private Supabase Storage bucket, and serves both through stable public API routes. The CLI still treats downloaded archives as untrusted and verifies the content digest before keeping them.
 - `lineage add <ref>` is the receiver shortcut for the registry path: resolve, download/import, inspect, confirm, and enable in one command. `lineage package pull` remains available when the receiver wants to fetch first and enable separately.
-- The runtime resolves enabled packages, builds a launch plan, and starts the selected provider through an explicit adapter boundary.
+- The runtime resolves enabled packages and builds a provider plan through an explicit adapter boundary; launchable providers start after materialization, while project-scoped materialization-only providers such as Windsurf and Cline do not require or perform a launch.
 - `lineage workflow run <workflow> <provider>` narrows materialization to the ordered steps declared by one workflow, while plain `lineage run <provider>` materializes the full enabled package set.
-- Provider shims let a normal command such as `claude`, `codex`, or `auggie` enter the Lineage runtime first, then hand off to the real provider binary.
+- Provider shims let a normal command such as `claude`, `codex`, `auggie`, or `aider` enter the Lineage runtime first, then hand off to the real provider binary. Aider integrates project-local configuration by linking its generated `CONVENTIONS.md` through the project-local `.aider.conf.yml` `read:` setting; credentials and model keys remain unmanaged. Cline and Windsurf are known providers for project-scoped config/materialization only: they are not shimmed, their native GUIs are not launched by Lineage, and global MCP configuration is not written.
 
 ## Package Shape
 
@@ -39,7 +39,23 @@ The receiver should be able to inspect these contents before enabling a package.
 - `internal/runtime`: provider-neutral launch planning.
 - `internal/provider`: the provider registry, command resolution, and execution.
 - `internal/shim`: local command shims.
-- `agenticlineage.vercel.app`: public website, package registry API, installer endpoint, package directory, and per-package bootstrap prompts.
+- `internal/inventory`: a read-only, deterministic evidence inventory for a
+  workspace that is not yet a Lineage package. It classifies files and records
+  literal Markdown citations; it neither executes nor semantically interprets
+  source content.
+- `agenticlineage.vercel.app`: public website, package registry API, installer endpoint, package directory, and per-package bootstrap prompts. The website is the registry boundary: it verifies GitHub publisher identity, enforces package ownership and immutable `name@version` rows, rate-limits public routes, records aggregate package metrics, and proxies private package archives to receivers.
+
+## Product Scope
+
+The released product is the local package runtime. The next planned layer is
+behavior-preserving compilation of existing workspaces, beginning with
+`internal/inventory`; it is not yet a user-facing command or a promise that
+Lineage can recover every workflow's intent.
+
+Provider adapters are released only when their code has merged into `develop`.
+An open adapter pull request is not a compatibility claim. Enterprise context
+reuse, organization/team inheritance, and provider caching are research
+directions rather than current runtime behavior. See [ADR 0016](decisions/0016-prioritize-package-distribution-and-behavioral-compilation.md).
 
 ## Safety Model
 

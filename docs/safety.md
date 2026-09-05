@@ -41,7 +41,7 @@ A package with any blocking error fails validation and refuses to export/publish
 
 ## What `lineage inspect` Shows
 
-`lineage inspect <ref>` resolves a package (project path, user id, or workspace id) and shows its manifest, discovered skills/workflows/agents/policies/references, content digest, and declared capabilities — without enabling it or writing anything. This is the point in the lifecycle meant for a receiver to actually read what they're about to enable, before they type `lineage enable`.
+`lineage inspect <ref>` resolves a package (project path, user id, or workspace id) and shows its manifest, discovered skills/workflows/agents/policies/references, content digest, and declared capabilities — without enabling or writing anything. This is the point in the lifecycle meant for a receiver to actually read what they're about to enable, before they type `lineage enable`.
 
 ## What `publish`, `pull`, And `import` Protect
 
@@ -56,6 +56,12 @@ None of this proves *who* published a package — v1 has no signing and no publi
 - **Enable**: if a package declares setup (tracker files or directories its workflow expects to exist), `lineage enable` shows exactly what would be created — file by file, directory by directory — and asks for confirmation before creating anything, unless `--yes` was passed. Declining setup leaves the workspace completely unchanged, same as declining to enable at all.
 - **Materialize**: the first time a given package set would actually change what's staged for a provider, `lineage run`/`lineage workflow run` shows the plan and asks for confirmation (`y`/`yes`, or `--yes` to skip the prompt for scripts). Re-running with an unchanged package set doesn't re-prompt. This is tracked per-provider in `.lineage/materialized-<provider>.json` so cleanup on disable is exact, not guessed from disk contents (ADR 0008).
 
+## Concurrent Invocations Are Not Locked
+
+`.lineage/config.yaml` and `.lineage/materialized-<provider>.json` take no advisory or file lock. Running two `lineage` invocations against the same project at the same time — two terminals, or a script that shells out twice — can race: both read the same starting content, both write, and the second write wins. The first process's change is silently lost, with no error to either caller.
+
+This is a lost update, not corruption — every write to these files goes through `internal/atomicfile` (temp file + atomic rename), so a reader never sees a torn or partially-written file, only the previous version or the complete new one. For a single-user local CLI this is an accepted tradeoff: don't run concurrent `lineage enable`/`lineage run` invocations against the same project, and if you do, expect the second one to win.
+
 ## Capabilities: Declared, Not Enforced
 
 A package's manifest can carry an optional `capabilities` block (`filesystem.read`, `network`). `lineage package validate` and `--dry-run` print what a package declares wanting. **Nothing in this build enforces, blocks, or warns based on those values beyond printing them** (ADR 0006) — a `capabilities` block that looks unenforced is expected, not a bug. Treat a declared capability as a receiver-visible statement of intent, not a permission you're granting or a boundary Lineage is holding.
@@ -65,7 +71,9 @@ A package's manifest can carry an optional `capabilities` block (`filesystem.rea
 `internal/packages.ScanForSecrets` checks a small, explicit, documented set of signals (ADR 0009):
 
 - Denylisted filenames: `.env`, `.npmrc`, SSH private key names, `.pem`/`.key`/`.pfx`/`.p12`.
-- A short list of high-confidence content patterns: private key headers, AWS access key ID shape, GitHub token prefixes.
+- A short list of high-confidence content patterns: private key headers, AWS
+  access key ID shapes, GitHub token prefixes, and Google API keys using the
+  `AIza` prefix.
 
 Findings report a file path and a human-readable reason only — the matched value itself is never included, so scan output is always safe to print or log. This is a **precise, not exhaustive** scan by design: it will not catch every possible secret shape (custom token formats, secrets embedded in prose, anything that doesn't match the documented list). It's one input `validate`/`export`/`import` consume, not a claim of complete secret safety. Do not treat a clean scan as proof a package contains no sensitive data — see [What Package Authors Should Never Publish](#what-package-authors-should-never-publish) below.
 

@@ -1,6 +1,6 @@
 # Lineage
 
-Package and share Claude Code and Codex workflow environments.
+Package and share Claude Code, Codex, Windsurf, Aider, and Cline workflow environments.
 
 A reusable agent workflow usually depends on more than one prompt or skill:
 skills, workflow steps, agents, policies, references, setup files, declared
@@ -32,12 +32,15 @@ Use Lineage when you want to:
   deterministic `.tgz` archive.
 - Let receivers inspect package contents and declared capabilities before
   enabling the workflow locally.
-- Run the packaged workflow through Claude Code or Codex without rebuilding the
-  environment by hand in each project.
+- Run the packaged workflow through Claude Code, Codex, Windsurf, Aider, or Cline
+  without rebuilding the environment by hand in each project.
 
 Lineage is provider-adjacent, not provider-owned. It prepares local files for
 the agent provider the receiver already uses; it does not replace Claude Code,
-Codex, or the user's agent account.
+Codex, Windsurf, Aider, Cline, or the user's agent account. Windsurf and Cline
+support is project-scoped and config/materialization-only: their `lineage run`
+and workflow forms stage project files and exit without resolving or launching
+their native GUIs.
 
 ## Install
 
@@ -76,6 +79,9 @@ lineage package validate ./resume-workflow
 lineage enable ./resume-workflow
 lineage run claude --dry-run
 lineage run codex --dry-run
+lineage run windsurf --dry-run
+lineage run aider --dry-run
+lineage run cline --dry-run
 ```
 
 Publish it to the Lineage registry:
@@ -134,6 +140,14 @@ archive download, and a copy-paste bootstrap prompt for someone who has never
 installed Lineage before. The canonical bootstrap prompt lives in
 [docs/bootstrap-prompt.md](docs/bootstrap-prompt.md).
 
+The production registry is served by the Lineage website API and currently
+stores package metadata/aggregate metrics in Supabase Postgres with immutable
+archives in a private Supabase Storage bucket. Publisher identity is still
+verified through GitHub (`lineage login` or `LINEAGE_PUBLISH_TOKEN` with
+`read:user`), and the original GitHub Releases registry remains the migration
+source and rollback path while the Supabase-backed registry is exercised in
+production.
+
 ## Sharing A `.tgz` Archive
 
 You can share a package without the registry:
@@ -177,12 +191,21 @@ what it would materialize before writing.
 - `lineage run claude --dry-run` previews Claude materialization.
 - `lineage run codex --dry-run` previews Codex materialization.
 - `lineage run auggie --dry-run` previews Auggie materialization.
-- `lineage workflow run <workflow-name> <claude|codex|auggie> --dry-run` narrows the
-  launch plan to one exported workflow.
+- `lineage run cline --dry-run` previews Cline materialization.
+- `lineage run aider --dry-run` previews Aider materialization.
+- `lineage run windsurf --dry-run` previews Windsurf project materialization
+  without resolving a Windsurf binary.
+- `lineage workflow run <workflow-name> <claude|codex|auggie|windsurf|aider|cline> --dry-run`
+  narrows the plan to one exported workflow; Windsurf and Cline remain
+  materialization-only.
 
-The current adapters support Claude, Codex, and Auggie. The package shape stays
-plain so future adapters can use the same manifest, skills, workflows, agents,
-policies, references, and setup material.
+The current adapters focus on Claude, Codex, Auggie, Windsurf, Aider, and
+Cline. The package shape stays plain so future adapters can use the same
+manifest, skills, workflows, agents, policies, references, and setup material.
+
+For the contributor-facing work to compile an existing agent workspace into
+those portable artifacts, see
+[Compiling Existing Workspaces](docs/guides/compiling-existing-workspaces.md).
 
 Project configuration lives at `.lineage/config.yaml`.
 
@@ -198,7 +221,19 @@ providers:
     binary: /path/to/real/codex
   auggie:
     binary: /path/to/real/auggie
+  aider:
+    binary: /path/to/real/aider
 ```
+
+Cline is project-scoped and materialization-only. It writes `.clinerules/` and
+`.clinerules/lineage.md`, does not require a configured or PATH-resolved Cline
+binary, does not launch a Cline CLI or GUI, does not install a `cline` shim, and
+does not write global MCP settings.
+
+Windsurf support is also project-scoped and config/materialization-only. Lineage
+stages skills under `.windsurf/rules/` and writes its generated context to the
+legacy-compatible project-local `.windsurfrules` file. It does not launch the
+Windsurf GUI or write Windsurf's global MCP configuration.
 
 The first time `lineage run` would stage files for a provider, it shows what it
 is about to create or change and asks for confirmation. Pass `--yes`/`-y` to
@@ -211,27 +246,25 @@ lineage init user
 lineage init workspace <name>
 
 lineage package init <name>
-lineage package validate <path>
+lineage package validate <path> [--yaml]
 lineage package export <path> [-o file.tgz]
 lineage package import <file.tgz> [--as name]
 
 lineage add <package-ref> [--yes]
-lineage package publish <path>
+lineage package publish <path> [--yes]
 lineage package pull <package-ref> [--as name]
 lineage login
 lineage logout
 lineage whoami
 
-lineage enable <package-path-or-id>
-lineage disable <package-path-or-id>
+lineage enable <package-path-or-id> [--yes]
+lineage disable <package-path-or-id> [--yes]
 lineage list
-lineage inspect <package-path-or-id>
-lineage run claude --dry-run
-lineage run codex --dry-run
-lineage run auggie --dry-run
-lineage workflow run <workflow-name> <claude|codex|auggie> [--dry-run] [--yes]
+lineage inspect <package-path-or-id> [--yaml]
+lineage run <claude|codex|auggie|windsurf|aider|cline> [--dry-run] [--yes] [-- provider args...]
+lineage workflow run <workflow-name> <claude|codex|auggie|windsurf|aider|cline> [--dry-run] [--yes] [-- provider args...]
 
-lineage install-shims
+lineage install-shims                 # launchable providers only; not Windsurf/Cline
 lineage doctor
 lineage version
 ```
@@ -239,7 +272,7 @@ lineage version
 ### Auggie setup and limitations
 
 Auggie is installed and authenticated separately on the receiving machine. It
-currently requires Node.js 20 or later:
+currently requires Node.js 22 or later:
 
 ```bash
 npm install -g @augmentcode/auggie
@@ -257,6 +290,9 @@ session state, settings, user rules, MCP configuration, or other machine-local
 files under `~/.augment`. Configure those features locally with Auggie. Auggie
 is currently beta, so its own platform and terminal limitations still apply.
 
+Use `lineage run windsurf --dry-run` or `lineage run cline --dry-run` to inspect
+the plan before applying it.
+
 Useful day-to-day checks:
 
 ```bash
@@ -266,8 +302,8 @@ lineage doctor
 lineage workflow run resume-review claude --dry-run
 ```
 
-Install local shims when you want commands such as `claude` or `codex` to enter
-Lineage first:
+Install local shims when you want launchable provider commands such as `claude`,
+`codex`, `auggie`, or `aider` to enter Lineage first:
 
 ```bash
 lineage install-shims
@@ -286,6 +322,7 @@ lineage enable resume-workflow
 
 - [What is a Lineage package?](docs/guides/lineage-package.md)
 - [How to share Claude Code and Codex workflows](docs/guides/share-agent-workflows.md)
+- [Compiling an existing agent workspace](docs/guides/compiling-existing-workspaces.md)
 - [Architecture and trust model](docs/architecture.md)
 - [Public docs and discoverability checklist](docs/discoverability.md)
 

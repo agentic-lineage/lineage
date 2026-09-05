@@ -33,6 +33,24 @@ func TestKnownProviders(t *testing.T) {
 			ContextFile: "AGENTS.md",
 			renderer:    auggieSkillRenderer{},
 		},
+		{
+			Name:            "windsurf",
+			SkillsDir:       filepath.Join(".windsurf", "rules"),
+			ContextFile:     ".windsurfrules",
+			MaterializeOnly: true,
+		},
+		{
+			Name:        "aider",
+			SkillsDir:   filepath.Join(".aider", "skills"),
+			ContextFile: "CONVENTIONS.md",
+			Config:      AiderConfigAdapter{},
+		},
+		{
+			Name:            "cline",
+			SkillsDir:       ".clinerules",
+			ContextFile:     filepath.Join(".clinerules", "lineage.md"),
+			MaterializeOnly: true,
+		},
 	}
 
 	got := Known()
@@ -48,6 +66,36 @@ func TestGetKnownProvider(t *testing.T) {
 	}
 	if p.SkillsDir == "" || p.ContextFile != "AGENTS.md" {
 		t.Fatalf("Get(codex) = %#v", p)
+	}
+}
+
+func TestGetClineProvider(t *testing.T) {
+	p, err := Get("cline")
+	if err != nil {
+		t.Fatalf("Get(cline) error = %v", err)
+	}
+	if p.SkillsDir != ".clinerules" || p.ContextFile != filepath.Join(".clinerules", "lineage.md") || !p.MaterializeOnly {
+		t.Fatalf("Get(cline) = %#v, want project-scoped Cline paths", p)
+	}
+}
+
+func TestGetAiderProvider(t *testing.T) {
+	p, err := Get("aider")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.SkillsDir != filepath.Join(".aider", "skills") || p.ContextFile != "CONVENTIONS.md" || p.Config == nil {
+		t.Fatalf("Get(aider) = %#v, want Aider conventions and config paths", p)
+	}
+}
+
+func TestGetWindsurfProvider(t *testing.T) {
+	p, err := Get("windsurf")
+	if err != nil {
+		t.Fatalf("Get(windsurf) error = %v", err)
+	}
+	if p.SkillsDir != filepath.Join(".windsurf", "rules") || p.ContextFile != ".windsurfrules" || !p.MaterializeOnly {
+		t.Fatalf("Get(windsurf) = %#v, want project-scoped Windsurf paths", p)
 	}
 }
 

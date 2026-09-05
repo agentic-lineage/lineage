@@ -15,6 +15,7 @@ Canonical links:
 - Architecture: https://github.com/agentic-lineage/lineage/blob/develop/docs/architecture.md
 - What is a Lineage package: https://github.com/agentic-lineage/lineage/blob/develop/docs/guides/lineage-package.md
 - How to share Claude Code and Codex workflows: https://github.com/agentic-lineage/lineage/blob/develop/docs/guides/share-agent-workflows.md
+- Compiling an existing agent workspace: https://github.com/agentic-lineage/lineage/blob/develop/docs/guides/compiling-existing-workspaces.md
 - Bootstrap prompt: https://github.com/agentic-lineage/lineage/blob/develop/docs/bootstrap-prompt.md
 
 Important safety context:
@@ -25,3 +26,5 @@ Important safety context:
   private machine-local files.
 - Materialization is permission-gated and can be previewed with `--dry-run`.
 - Declared capabilities are visible safety metadata, not an enforcement sandbox.
+- Workflow compilation is currently contributor-facing design work; it does not
+  execute source scripts or promise semantic recovery of every workspace.
