@@ -90,7 +90,7 @@ Before enabling, receivers can review:
 - Validation output, including portability and safety findings.
 - Dry-run materialization output for Claude Code, Codex, or Auggie.
 
-To receive an Auggie workflow, install `@augmentcode/auggie` with Node.js 20 or
+To receive an Auggie workflow, install `@augmentcode/auggie` with Node.js 22 or
 later and run `auggie login` locally before launching. Lineage stages native
 skills in `.augment/skills/` and its generated package summary in `AGENTS.md`.
 Augment credentials, sessions, settings, user rules, and MCP configuration stay
