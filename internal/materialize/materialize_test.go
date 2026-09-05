@@ -328,14 +328,22 @@ func TestApplyStagesSkillsAndWritesContextForEveryProvider(t *testing.T) {
 				)
 			}
 
+			var materialized state
+			if err := json.Unmarshal(stateData, &materialized); err != nil {
+				t.Fatalf("decode %s materialization state: %v", adapter.Name, err)
+			}
+
 			expectedSkillDir := filepath.Join(
 				adapter.SkillsDir, "review-pack-review",
 			)
 
-			if !strings.Contains(string(stateData), expectedSkillDir) {
+			if len(materialized.SkillDirs) != 1 ||
+				materialized.SkillDirs[0] != expectedSkillDir {
 				t.Fatalf(
-					"%s state missing skill path %q:\n%s", adapter.Name,
-					expectedSkillDir, stateData,
+					"%s state skill dirs = %#v, want [%q]",
+					adapter.Name,
+					materialized.SkillDirs,
+					expectedSkillDir,
 				)
 			}
 		})
