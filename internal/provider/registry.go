@@ -19,6 +19,7 @@ type Provider struct {
 	ContextFile     string
 	MaterializeOnly bool
 	Config          ConfigAdapter
+	renderer        SkillRenderer
 }
 
 // ConfigState records a provider-specific project configuration edit so the
@@ -42,6 +43,7 @@ type ConfigAdapter interface {
 var registry = []Provider{
 	{Name: "claude", SkillsDir: filepath.Join(".claude", "skills"), ContextFile: "CLAUDE.md"},
 	{Name: "codex", SkillsDir: filepath.Join(".agents", "skills"), ContextFile: "AGENTS.md"},
+	{Name: "auggie", SkillsDir: filepath.Join(".augment", "skills"), ContextFile: "AGENTS.md", renderer: auggieSkillRenderer{}},
 	{Name: "windsurf", SkillsDir: filepath.Join(".windsurf", "rules"), ContextFile: ".windsurfrules", MaterializeOnly: true},
 	{Name: "aider", SkillsDir: filepath.Join(".aider", "skills"), ContextFile: "CONVENTIONS.md", Config: AiderConfigAdapter{}},
 	{Name: "cline", SkillsDir: ".clinerules", ContextFile: filepath.Join(".clinerules", "lineage.md"), MaterializeOnly: true},

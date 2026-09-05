@@ -10,6 +10,7 @@ import (
 
 	"github.com/agentic-lineage/lineage/internal/config"
 	"github.com/agentic-lineage/lineage/internal/packages"
+	"github.com/agentic-lineage/lineage/internal/provider"
 )
 
 // noopProviderBinary returns the path to an OS-appropriate fake provider
@@ -69,21 +70,46 @@ func TestEnableAndDryRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg.Providers = map[string]config.Provider{"codex": {Binary: "/bin/echo"}}
+
+	cfg.Providers = map[string]config.Provider{}
+
+	for _, adapter := range provider.Known() {
+		cfg.Providers[adapter.Name] = config.Provider{
+			Binary: "/bin/echo",
+		}
+	}
+
 	if err := config.SaveProjectConfig(config.ProjectConfigPath(project), cfg); err != nil {
 		t.Fatal(err)
 	}
 
-	stdout.Reset()
-	stderr.Reset()
-	if err := Execute(nil, []string{"run", "codex", "--dry-run"}, nil, &stdout, &stderr); err != nil {
-		t.Fatalf("dry-run error = %v stderr=%s", err, stderr.String())
-	}
-	if !strings.Contains(stdout.String(), "provider: codex") {
-		t.Fatalf("dry-run output = %s", stdout.String())
-	}
-	if !strings.Contains(stdout.String(), "agent-pack@0.1.0") {
-		t.Fatalf("dry-run output = %s", stdout.String())
+	for _, adapter := range provider.Known() {
+		t.Run(adapter.Name, func(t *testing.T) {
+			stdout.Reset()
+			stderr.Reset()
+
+			err := Execute(
+				nil, []string{"run", adapter.Name, "--dry-run"}, nil, &stdout, &stderr,
+			)
+
+			if err != nil {
+				t.Fatalf("dry-run error = %v stderr = %s", err, stderr.String())
+			}
+
+			output := stdout.String()
+
+			if adapter.MaterializeOnly {
+				if !strings.Contains(output, "launch: disabled (config/materialization only)") {
+					t.Errorf("dry-run output does not report materialization-only provider:\n%s", output)
+				}
+			} else if !strings.Contains(output, "real_binary: /bin/echo") {
+				t.Errorf("dry-run output does not name configured binary:\n%s", output)
+			}
+
+			if !strings.Contains(output, "agent-pack@0.1.0") {
+				t.Errorf("dry-run output does not name enabled package:\n%s", output)
+			}
+		})
 	}
 }
 
@@ -253,9 +279,10 @@ func TestRunUnknownProviderListsKnownProviders(t *testing.T) {
 	if err == nil {
 		t.Fatal("Execute(run does-not-exist) error = nil, want error")
 	}
-	for _, name := range []string{"claude", "codex", "windsurf", "aider", "cline"} {
-		if !strings.Contains(stderr.String(), name) {
-			t.Fatalf("stderr = %q, want it to list known provider %q", stderr.String(), name)
+
+	for _, adapter := range provider.Known() {
+		if !strings.Contains(stderr.String(), adapter.Name) {
+			t.Fatalf("stderr = %q, want it to list known providers %q", stderr.String(), adapter.Name)
 		}
 	}
 }
@@ -264,11 +291,13 @@ func TestUsageListsKnownProvidersNotHardcoded(t *testing.T) {
 	var stdout bytes.Buffer
 	printUsage(&stdout)
 	out := stdout.String()
-	for _, name := range []string{"claude", "codex", "windsurf", "aider", "cline"} {
-		if !strings.Contains(out, name) {
-			t.Fatalf("usage = %q, want it to mention registered provider %q", out, name)
+
+	for _, adapter := range provider.Known() {
+		if !strings.Contains(out, adapter.Name) {
+			t.Fatalf("usage = %q, want it to mention every registered provider", out)
 		}
 	}
+
 	if !strings.Contains(out, "put lineage in front of launchable providers on PATH") {
 		t.Fatalf("usage = %q, want install-shims help to describe launchable providers", out)
 	}
@@ -752,9 +781,9 @@ func TestDoctorReportsEachKnownProvider(t *testing.T) {
 	if err := Execute(nil, []string{"doctor"}, nil, &stdout, &stderr); err != nil {
 		t.Fatalf("doctor error = %v stderr=%s", err, stderr.String())
 	}
-	for _, name := range []string{"claude", "codex"} {
-		if !strings.Contains(stdout.String(), "provider "+name+":") {
-			t.Fatalf("doctor output = %q, want a line for provider %s", stdout.String(), name)
+	for _, adapter := range provider.Known() {
+		if !strings.Contains(stdout.String(), "provider "+adapter.Name+":") {
+			t.Fatalf("doctor output = %q, want a line for provider %s", stdout.String(), adapter.Name)
 		}
 	}
 }

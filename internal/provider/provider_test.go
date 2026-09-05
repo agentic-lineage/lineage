@@ -3,6 +3,7 @@ package provider
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -26,22 +27,63 @@ func TestIsShimPath(t *testing.T) {
 	}
 }
 
-func TestResolveWithConfiguredBinary(t *testing.T) {
-	project := config.ProjectConfig{
-		Providers: map[string]config.Provider{
-			"codex": {Binary: "/bin/echo"},
-		},
+func TestResolveWithConfiguredBinaryForEveryLaunchableProvider(t *testing.T) {
+	for _, adapter := range Known() {
+		if adapter.MaterializeOnly {
+			continue
+		}
+
+		t.Run(adapter.Name, func(t *testing.T) {
+			binary := filepath.Join(t.TempDir(), adapter.Name)
+			project := config.ProjectConfig{
+				Providers: map[string]config.Provider{
+					adapter.Name: {
+						Binary: binary,
+						Args:   []string{"configured-arg"},
+					},
+				},
+			}
+
+			plan, err := Resolve(
+				adapter.Name, t.TempDir(), project, []string{"launch-arg"},
+			)
+
+			if err != nil {
+				t.Fatalf("Resolve() error = %v", err)
+			}
+
+			if plan.Name != adapter.Name {
+				t.Errorf("Name = %q, want %q", plan.Name, adapter.Name)
+			}
+
+			if plan.Binary != binary {
+				t.Errorf("Binary = %q, want %q", plan.Binary, binary)
+			}
+
+			wantArgs := []string{"configured-arg", "launch-arg"}
+			if !reflect.DeepEqual(plan.Args, wantArgs) {
+				t.Errorf("Args = %#v, want %#v", plan.Args, wantArgs)
+			}
+
+			if !containsString(plan.Env, "LINEAGE_PROVIDER="+adapter.Name) {
+				t.Errorf("Env does not contain LINEAGE_PROVIDER=%s", adapter.Name)
+			}
+
+			if !containsString(plan.Env, "LINEAGE_ACTIVE=1") {
+				t.Error("Env does not contain LINEAGE_ACTIVE=1")
+			}
+		})
 	}
-	plan, err := Resolve("codex", t.TempDir(), project, []string{"hello"})
-	if err != nil {
-		t.Fatalf("Resolve() error = %v", err)
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
 	}
-	if plan.Binary != "/bin/echo" {
-		t.Fatalf("Binary = %q", plan.Binary)
-	}
-	if len(plan.Args) != 1 || plan.Args[0] != "hello" {
-		t.Fatalf("Args = %#v", plan.Args)
-	}
+
+	return false
 }
 
 func TestResolveMaterializeOnlyProviderDoesNotResolveBinary(t *testing.T) {

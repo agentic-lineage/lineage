@@ -1,6 +1,7 @@
 package materialize
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -10,6 +11,8 @@ import (
 
 	"github.com/agentic-lineage/lineage/internal/packages"
 	"github.com/agentic-lineage/lineage/internal/provider"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestNeedsApprovalOnFirstRun(t *testing.T) {
@@ -84,30 +87,266 @@ func TestApplyRejectsCollidingSkillDirNames(t *testing.T) {
 	}
 }
 
-func TestApplyStagesSkillsAndWritesContextFile(t *testing.T) {
+func TestApplyRendersPlainSkillForAuggie(t *testing.T) {
 	root := t.TempDir()
 	pkg := buildTestPackage(t, "review-pack", "review")
 
-	claude, err := provider.Get("claude")
+	auggie, err := provider.Get("auggie")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := Apply(root, claude, []packages.Package{pkg}); err != nil {
+
+	if err := Apply(root, auggie, []packages.Package{pkg}); err != nil {
 		t.Fatalf("Apply() error = %v", err)
 	}
 
-	skillFile := filepath.Join(root, ".claude", "skills", "review-pack-review", "SKILL.md")
-	if _, err := os.Stat(skillFile); err != nil {
-		t.Fatalf("expected staged skill at %s: %v", skillFile, err)
+	skillPath := filepath.Join(
+		root,
+		".augment",
+		"skills",
+		"review-pack-review",
+		"SKILL.md",
+	)
+
+	content, err := os.ReadFile(skillPath)
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	contextData, err := os.ReadFile(filepath.Join(root, "CLAUDE.md"))
-	if err != nil {
-		t.Fatalf("read CLAUDE.md: %v", err)
+	metadata, body := parseSkillFrontmatter(t, string(content))
+
+	if metadata["name"] != "review-pack-review" {
+		t.Fatalf(
+			"frontmatter name = %#v, want %q", metadata["name"],
+			"review-pack-review",
+		)
 	}
-	content := string(contextData)
-	if !containsAll(content, beginMarker, endMarker, "review-pack@0.1.0") {
-		t.Fatalf("CLAUDE.md missing expected content:\n%s", content)
+
+	description, ok := metadata["description"].(string)
+	if !ok || strings.TrimSpace(description) == "" {
+		t.Fatalf(
+			"frontmatter description = %#v, want a nonempty string",
+			metadata["description"],
+		)
+	}
+
+	if !strings.Contains(body, "# review") {
+		t.Fatalf("staged skill lost its original body:\n%s", body)
+	}
+}
+
+func parseSkillFrontmatter(
+	t *testing.T,
+	content string,
+) (map[string]any, string) {
+
+	t.Helper()
+
+	if !strings.HasPrefix(content, "---\n") {
+		t.Fatalf("skill has no frontmatter:\n%s", content)
+	}
+
+	remaining := strings.TrimPrefix(content, "---\n")
+	parts := strings.SplitN(remaining, "\n---\n", 2)
+
+	if len(parts) != 2 {
+		t.Fatalf("skill has invalid frontmatter delimiters:\n%s", content)
+	}
+
+	metadata := map[string]any{}
+	if err := yaml.Unmarshal([]byte(parts[0]), &metadata); err != nil {
+		t.Fatalf("skill has invalid YAML frontmatter: %v", err)
+	}
+
+	return metadata, parts[1]
+}
+
+func TestApplyUpdatesExistingFrontmatterForAuggie(t *testing.T) {
+	root := t.TempDir()
+	pkg := buildTestPackage(t, "review-pack", "review")
+
+	sourcePath := filepath.Join(
+		pkg.Path,
+		"skills",
+		"review",
+		"SKILL.md",
+	)
+
+	source := "---\nname: review\ndescription: Reviews proposed changes\n---\n\n# Review instructions"
+
+	if err := os.WriteFile(sourcePath, []byte(source), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	auggie, err := provider.Get("auggie")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Apply(root, auggie, []packages.Package{pkg}); err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+
+	stagedPath := filepath.Join(
+		root,
+		".augment",
+		"skills",
+		"review-pack-review",
+		"SKILL.md",
+	)
+
+	content, err := os.ReadFile(stagedPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	staged := string(content)
+
+	if strings.Count(staged, "---") != 2 {
+		t.Fatalf("staged skill should contain one frontmatter block:\n%s", staged)
+	}
+
+	if !strings.Contains(staged, "name: review-pack-review") {
+		t.Fatalf("staged skill has incorrect name:\n%s", staged)
+	}
+
+	if !strings.Contains(staged, "description: Reviews proposed changes") {
+		t.Fatalf("staged skill lost its description:\n%s", staged)
+	}
+
+	if !strings.Contains(staged, "# Review instructions") {
+		t.Fatalf("staged skill lost its body:\n%s", staged)
+	}
+}
+
+func TestApplyLeavesAuggieSkillUntouchedWhenRenderingFails(t *testing.T) {
+	root := t.TempDir()
+	pkg := buildTestPackage(t, "review-pack", "review")
+
+	auggie, err := provider.Get("auggie")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Apply(root, auggie, []packages.Package{pkg}); err != nil {
+		t.Fatalf("first Apply() error = %v", err)
+	}
+
+	stagedPath := filepath.Join(
+		root,
+		".augment",
+		"skills",
+		"review-pack-review",
+		"SKILL.md",
+	)
+
+	previous, err := os.ReadFile(stagedPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sourcePath := filepath.Join(
+		pkg.Path,
+		"skills",
+		"review",
+		"SKILL.md",
+	)
+
+	invalid := "---\nname: review\ndescription: broken"
+
+	if err := os.WriteFile(sourcePath, []byte(invalid), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Apply(root, auggie, []packages.Package{pkg}); err == nil {
+		t.Fatalf("second Apply() error = nil, want rendering error")
+	}
+
+	current, err := os.ReadFile(stagedPath)
+	if err != nil {
+		t.Fatalf("read previously staged skill: %v", err)
+	}
+
+	if !bytes.Equal(current, previous) {
+		t.Fatalf(
+			"failed Apply() changed the existing skill\nbefore:\n%s\nafter:\n%s",
+			previous,
+			current,
+		)
+	}
+}
+
+func TestApplyStagesSkillsAndWritesContextForEveryProvider(t *testing.T) {
+	pkg := buildTestPackage(t, "review-pack", "review")
+
+	for _, adapter := range provider.Known() {
+		t.Run(adapter.Name, func(t *testing.T) {
+			root := t.TempDir()
+
+			if err := Apply(root, adapter, []packages.Package{pkg}); err != nil {
+				t.Fatalf("Apply() error = %v", err)
+			}
+
+			skillFile := filepath.Join(
+				root,
+				adapter.SkillsDir,
+				"review-pack-review",
+				"SKILL.md",
+			)
+
+			if _, err := os.Stat(skillFile); err != nil {
+				t.Fatalf(
+					"expected %s skill at %s: %v",
+					adapter.Name,
+					skillFile,
+					err,
+				)
+			}
+
+			contextPath := filepath.Join(root, adapter.ContextFile)
+			contextData, err := os.ReadFile(contextPath)
+			if err != nil {
+				t.Fatalf("read %s: %v", adapter.ContextFile, err)
+			}
+
+			if !containsAll(
+				string(contextData), beginMarker, endMarker, "review-pack@0.1.0",
+			) {
+				t.Fatalf(
+					"%s missing expected content:\n%s", adapter.ContextFile, contextData,
+				)
+			}
+
+			statePath := filepath.Join(
+				root, ".lineage", "materialized-"+adapter.Name+".json",
+			)
+
+			stateData, err := os.ReadFile(statePath)
+			if err != nil {
+				t.Fatalf(
+					"read %s materialization state: %v", adapter.Name, err,
+				)
+			}
+
+			var materialized state
+			if err := json.Unmarshal(stateData, &materialized); err != nil {
+				t.Fatalf("decode %s materialization state: %v", adapter.Name, err)
+			}
+
+			expectedSkillDir := filepath.Join(
+				adapter.SkillsDir, "review-pack-review",
+			)
+
+			if len(materialized.SkillDirs) != 1 ||
+				materialized.SkillDirs[0] != expectedSkillDir {
+				t.Fatalf(
+					"%s state skill dirs = %#v, want [%q]",
+					adapter.Name,
+					materialized.SkillDirs,
+					expectedSkillDir,
+				)
+			}
+		})
 	}
 }
 

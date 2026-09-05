@@ -190,17 +190,18 @@ what it would materialize before writing.
 
 - `lineage run claude --dry-run` previews Claude materialization.
 - `lineage run codex --dry-run` previews Codex materialization.
+- `lineage run auggie --dry-run` previews Auggie materialization.
 - `lineage run cline --dry-run` previews Cline materialization.
 - `lineage run aider --dry-run` previews Aider materialization.
 - `lineage run windsurf --dry-run` previews Windsurf project materialization
   without resolving a Windsurf binary.
-- `lineage workflow run <workflow-name> <claude|codex|windsurf|aider|cline> --dry-run`
+- `lineage workflow run <workflow-name> <claude|codex|auggie|windsurf|aider|cline> --dry-run`
   narrows the plan to one exported workflow; Windsurf and Cline remain
   materialization-only.
 
-The current adapters focus on Claude, Codex, Windsurf, Aider, and Cline. The
-package shape stays plain so future adapters can use the same manifest, skills,
-workflows, agents, policies, references, and setup material.
+The current adapters focus on Claude, Codex, Auggie, Windsurf, Aider, and
+Cline. The package shape stays plain so future adapters can use the same
+manifest, skills, workflows, agents, policies, references, and setup material.
 
 For the contributor-facing work to compile an existing agent workspace into
 those portable artifacts, see
@@ -218,6 +219,8 @@ providers:
     binary: /path/to/real/claude
   codex:
     binary: /path/to/real/codex
+  auggie:
+    binary: /path/to/real/auggie
   aider:
     binary: /path/to/real/aider
 ```
@@ -258,16 +261,38 @@ lineage enable <package-path-or-id> [--yes]
 lineage disable <package-path-or-id> [--yes]
 lineage list
 lineage inspect <package-path-or-id> [--yaml]
-lineage run <claude|codex|windsurf|aider|cline> [--dry-run] [--yes] [-- provider args...]
-lineage workflow run <workflow-name> <claude|codex|windsurf|aider|cline> [--dry-run] [--yes] [-- provider args...]
+lineage run <claude|codex|auggie|windsurf|aider|cline> [--dry-run] [--yes] [-- provider args...]
+lineage workflow run <workflow-name> <claude|codex|auggie|windsurf|aider|cline> [--dry-run] [--yes] [-- provider args...]
 
 lineage install-shims                 # launchable providers only; not Windsurf/Cline
 lineage doctor
 lineage version
 ```
 
+### Auggie setup and limitations
+
+Auggie is installed and authenticated separately on the receiving machine. It
+currently requires Node.js 22 or later:
+
+```bash
+npm install -g @augmentcode/auggie
+auggie login
+lineage run auggie --dry-run
+```
+
+The adapter finds `auggie` on `PATH`, or uses `providers.auggie.binary` when
+configured. When approved, Lineage stages package skills in
+`.augment/skills/`, updates its generated section in the project's `AGENTS.md`,
+and launches Auggie with the supplied provider arguments.
+
+Lineage does not read, package, or materialize Augment credentials, login or
+session state, settings, user rules, MCP configuration, or other machine-local
+files under `~/.augment`. Configure those features locally with Auggie. Auggie
+is currently beta, so its own platform and terminal limitations still apply.
+
 Use `lineage run windsurf --dry-run` or `lineage run cline --dry-run` to inspect
 the plan before applying it.
+
 Useful day-to-day checks:
 
 ```bash
@@ -278,8 +303,7 @@ lineage workflow run resume-review claude --dry-run
 ```
 
 Install local shims when you want launchable provider commands such as `claude`,
-`codex`, or `aider` to enter
-Lineage first:
+`codex`, `auggie`, or `aider` to enter Lineage first:
 
 ```bash
 lineage install-shims
