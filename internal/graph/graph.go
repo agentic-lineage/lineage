@@ -61,6 +61,13 @@ func statePath(projectRoot string) string {
 	return filepath.Join(projectRoot, stateDirName, fileName)
 }
 
+// Path returns where a project's local lineage graph file lives, for
+// callers (such as `lineage doctor`) that need to name it in diagnostic
+// output without reaching into package-private layout details.
+func Path(projectRoot string) string {
+	return statePath(projectRoot)
+}
+
 // newID returns an opaque, unique record identifier: 16 random bytes,
 // hex-encoded. It carries no meaning beyond identity, unlike package
 // identity (name/version/digest) which is meaningful on its own.

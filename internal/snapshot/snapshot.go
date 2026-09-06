@@ -15,8 +15,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
+	"regexp"
 	"sort"
+	"strings"
 
 	"github.com/agentic-lineage/lineage/internal/config"
 	"github.com/agentic-lineage/lineage/internal/packages"
@@ -27,10 +30,15 @@ import (
 // packages.ComputeDigest formats package digests: "sha256:<hex>".
 type ObjectID string
 
-// CurrentManifestSchema is the current snapshot manifest format version,
-// following the same defaulting convention as packages.Manifest's Schema
-// field (ADR 0005): a manifest with Schema 0 is treated as version 1.
+// CurrentManifestSchema is the current snapshot manifest format version.
+// Following ADR 0005's compatibility convention, an absent schema field is
+// treated as version 1; an explicitly declared zero remains unsupported.
 const CurrentManifestSchema = 1
+
+var (
+	objectIDPattern = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
+	identityPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._+-]*$`)
+)
 
 // Manifest is a deterministic, hashable description of one package
 // snapshot: the package's identity, plus every file it contains mapped to
@@ -61,15 +69,10 @@ func hashID(data []byte) ObjectID {
 // fanned out into a two-character subdirectory (git-style) so a large
 // number of objects doesn't produce one enormous flat directory.
 func blobPath(root string, id ObjectID) (string, error) {
-	const prefix = "sha256:"
-	s := string(id)
-	if len(s) <= len(prefix) || s[:len(prefix)] != prefix {
+	if !objectIDPattern.MatchString(string(id)) {
 		return "", fmt.Errorf("invalid object id %q", id)
 	}
-	hexPart := s[len(prefix):]
-	if len(hexPart) < 3 {
-		return "", fmt.Errorf("invalid object id %q", id)
-	}
+	hexPart := strings.TrimPrefix(string(id), "sha256:")
 	return filepath.Join(root, hexPart[:2], hexPart[2:]), nil
 }
 
@@ -83,7 +86,17 @@ func putBlob(root string, data []byte) (ObjectID, error) {
 	if err != nil {
 		return "", err
 	}
-	if _, err := os.Stat(path); err == nil {
+	if info, err := os.Lstat(path); err == nil {
+		if !info.Mode().IsRegular() {
+			return "", fmt.Errorf("object path %s is not a regular file", path)
+		}
+		existing, err := os.ReadFile(path)
+		if err != nil {
+			return "", err
+		}
+		if got := hashID(existing); got != id {
+			return "", fmt.Errorf("object %s is corrupt: content hashes to %s", id, got)
+		}
 		return id, nil
 	} else if !os.IsNotExist(err) {
 		return "", err
@@ -105,6 +118,13 @@ func getBlob(root string, id ObjectID) ([]byte, error) {
 	path, err := blobPath(root, id)
 	if err != nil {
 		return nil, err
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("object path %s is not a regular file", path)
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -194,6 +214,57 @@ func Create(home, dir string) (Manifest, ObjectID, error) {
 	return snapshotManifest, id, nil
 }
 
+// AllManifestIDs returns the ObjectID of every snapshot manifest stored
+// under home, sorted for stable output. Used by `lineage doctor` to check
+// referential integrity across every snapshot this build has ever created
+// (see docs/decisions/0015) without needing a separate index of what's been
+// written - the fanned-out directory layout itself is the enumeration.
+func AllManifestIDs(home string) ([]ObjectID, error) {
+	return allObjectIDs(config.SnapshotsDir(home))
+}
+
+// allObjectIDs walks a content-addressed store's two-level fan-out
+// directory layout (see blobPath) and reconstructs the ObjectID implied by
+// each file's location, rather than trusting any separately maintained
+// list.
+func allObjectIDs(root string) ([]ObjectID, error) {
+	prefixes, err := os.ReadDir(root)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var ids []ObjectID
+	for _, prefixEntry := range prefixes {
+		prefix := prefixEntry.Name()
+		if prefixEntry.Type()&os.ModeSymlink != 0 || !prefixEntry.IsDir() || len(prefix) != 2 || !isLowerHex(prefix) {
+			return nil, fmt.Errorf("invalid content-addressed store entry %s", filepath.Join(root, prefix))
+		}
+		entries, err := os.ReadDir(filepath.Join(root, prefix))
+		if err != nil {
+			return nil, err
+		}
+		for _, e := range entries {
+			if e.Type()&os.ModeSymlink != 0 || !e.Type().IsRegular() || len(e.Name()) != 62 || !isLowerHex(e.Name()) {
+				return nil, fmt.Errorf("invalid content-addressed store entry %s", filepath.Join(root, prefix, e.Name()))
+			}
+			ids = append(ids, ObjectID("sha256:"+prefix+e.Name()))
+		}
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	return ids, nil
+}
+
+func isLowerHex(s string) bool {
+	for _, r := range s {
+		if (r < '0' || r > '9') && (r < 'a' || r > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
 // LoadManifest reads and verifies the snapshot manifest with the given ID,
 // then decodes it.
 func LoadManifest(home string, id ObjectID) (Manifest, error) {
@@ -201,11 +272,69 @@ func LoadManifest(home string, id ObjectID) (Manifest, error) {
 	if err != nil {
 		return Manifest{}, err
 	}
-	var m Manifest
-	if err := json.Unmarshal(data, &m); err != nil {
+	var raw *Manifest
+	if err := json.Unmarshal(data, &raw); err != nil {
 		return Manifest{}, fmt.Errorf("parse snapshot manifest %s: %w", id, err)
 	}
+	if raw == nil {
+		return Manifest{}, fmt.Errorf("parse snapshot manifest %s: manifest must be a JSON object", id)
+	}
+	m := *raw
+	var probe struct {
+		Schema *int `json:"schema"`
+	}
+	if err := json.Unmarshal(data, &probe); err != nil {
+		return Manifest{}, fmt.Errorf("parse snapshot manifest %s: %w", id, err)
+	}
+	if probe.Schema == nil {
+		m.Schema = CurrentManifestSchema
+	}
+	if err := validateManifest(m); err != nil {
+		return Manifest{}, fmt.Errorf("invalid snapshot manifest %s: %w", id, err)
+	}
 	return m, nil
+}
+
+func validateManifest(m Manifest) error {
+	if m.Schema != CurrentManifestSchema {
+		return fmt.Errorf("declares schema %d, but this build only understands schema %d", m.Schema, CurrentManifestSchema)
+	}
+	if !identityPattern.MatchString(m.Name) {
+		return fmt.Errorf("invalid package name %q", m.Name)
+	}
+	if !identityPattern.MatchString(m.Version) {
+		return fmt.Errorf("invalid package version %q", m.Version)
+	}
+	if len(m.Files) == 0 {
+		return fmt.Errorf("contains no files")
+	}
+
+	seen := make(map[string]struct{}, len(m.Files))
+	manifestFileFound := false
+	previous := ""
+	for i, f := range m.Files {
+		if f.Path == "" || strings.Contains(f.Path, `\`) || path.IsAbs(f.Path) || path.Clean(f.Path) != f.Path || f.Path == "." || strings.HasPrefix(f.Path, "../") {
+			return fmt.Errorf("file %d has unsafe or non-canonical path %q", i, f.Path)
+		}
+		if _, exists := seen[f.Path]; exists {
+			return fmt.Errorf("contains duplicate file path %q", f.Path)
+		}
+		seen[f.Path] = struct{}{}
+		if previous != "" && f.Path <= previous {
+			return fmt.Errorf("file paths are not in strictly sorted order")
+		}
+		previous = f.Path
+		if f.Path == packages.ManifestFileName {
+			manifestFileFound = true
+		}
+		if !objectIDPattern.MatchString(string(f.Object)) {
+			return fmt.Errorf("file %q has invalid object id %q", f.Path, f.Object)
+		}
+	}
+	if !manifestFileFound {
+		return fmt.Errorf("does not reference %s", packages.ManifestFileName)
+	}
+	return nil
 }
 
 // Materialize reconstructs m's files under destDir. Every object m
@@ -214,6 +343,9 @@ func LoadManifest(home string, id ObjectID) (Manifest, error) {
 // rather than reconstructing a package with silently missing or wrong
 // content (see docs/decisions/0014).
 func Materialize(home string, m Manifest, destDir string) error {
+	if err := validateManifest(m); err != nil {
+		return fmt.Errorf("invalid snapshot manifest: %w", err)
+	}
 	contents := make(map[string][]byte, len(m.Files))
 	for _, f := range m.Files {
 		data, err := ReadObject(home, f.Object)
