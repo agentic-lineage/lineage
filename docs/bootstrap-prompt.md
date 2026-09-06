@@ -2,7 +2,7 @@
 
 This is the copy-paste prompt for ADR 0012 decision 5: the primary receiver
 path for someone who has never touched Lineage and doesn't want to. They
-paste this into a fresh Claude or Codex chat, with `{{PACKAGE_REF}}`
+paste this into a fresh Claude, Codex, or Auggie chat, with `{{PACKAGE_REF}}`
 replaced by one real package reference, and the agent does the rest.
 
 This file is the canonical source. The website embeds a copy of this exact
@@ -42,7 +42,7 @@ diff check is tracked as follow-up in the ADR.
 
 ````text
 You're going to install and enable a Lineage package for me. Lineage
-packages one or more Claude/Codex skills, workflows, agents, or policies
+packages one or more Claude/Codex/Auggie skills, workflows, agents, or policies
 together; you'll fetch one, and I'll be able to use it right after.
 
 Do exactly these steps, in order:
@@ -97,7 +97,7 @@ Verified 2026-08-22 against Lineage v0.3.0, the first release containing
 session with no other context. It ran the curl installer, ran
 `lineage add commit-message-helper@0.1.0 --yes`, correctly summarized the
 package's skill and capabilities back in its own words, and named the correct
-next command (`lineage run <claude|codex>`). A separate
+next command (`lineage run <claude|codex|auggie>`). A separate
 `lineage run claude --dry-run` confirmed the expected package and skill
 resolved.
 
@@ -111,8 +111,8 @@ manifest text back as content rather than acting on it.
 
 **Caveats.**
 - "Fresh agent session" here means a subagent spawned with the prompt as its
-  entire task and no other context, not a brand-new top-level Claude Code or
-  Codex chat window.
+  entire task and no other context, not a brand-new top-level Claude Code,
+  Codex, or Auggie chat window.
 - Two adversarial phrasings were tried. That is useful evidence, not a formal
   proof that no prompt-injection phrasing could ever work.
 - Re-check this section whenever the prompt wording or `lineage add` output

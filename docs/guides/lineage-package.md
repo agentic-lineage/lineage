@@ -64,6 +64,7 @@ Preview provider materialization before anything is written:
 ```bash
 lineage run claude --dry-run
 lineage run codex --dry-run
+lineage run auggie --dry-run
 lineage workflow run resume-review claude --dry-run
 ```
 

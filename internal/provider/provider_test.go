@@ -3,6 +3,7 @@ package provider
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -26,21 +27,74 @@ func TestIsShimPath(t *testing.T) {
 	}
 }
 
-func TestResolveWithConfiguredBinary(t *testing.T) {
-	project := config.ProjectConfig{
-		Providers: map[string]config.Provider{
-			"codex": {Binary: "/bin/echo"},
-		},
+func TestResolveWithConfiguredBinaryForEveryLaunchableProvider(t *testing.T) {
+	for _, adapter := range Known() {
+		if adapter.MaterializeOnly {
+			continue
+		}
+
+		t.Run(adapter.Name, func(t *testing.T) {
+			binary := filepath.Join(t.TempDir(), adapter.Name)
+			project := config.ProjectConfig{
+				Providers: map[string]config.Provider{
+					adapter.Name: {
+						Binary: binary,
+						Args:   []string{"configured-arg"},
+					},
+				},
+			}
+
+			plan, err := Resolve(
+				adapter.Name, t.TempDir(), project, []string{"launch-arg"},
+			)
+
+			if err != nil {
+				t.Fatalf("Resolve() error = %v", err)
+			}
+
+			if plan.Name != adapter.Name {
+				t.Errorf("Name = %q, want %q", plan.Name, adapter.Name)
+			}
+
+			if plan.Binary != binary {
+				t.Errorf("Binary = %q, want %q", plan.Binary, binary)
+			}
+
+			wantArgs := []string{"configured-arg", "launch-arg"}
+			if !reflect.DeepEqual(plan.Args, wantArgs) {
+				t.Errorf("Args = %#v, want %#v", plan.Args, wantArgs)
+			}
+
+			if !containsString(plan.Env, "LINEAGE_PROVIDER="+adapter.Name) {
+				t.Errorf("Env does not contain LINEAGE_PROVIDER=%s", adapter.Name)
+			}
+
+			if !containsString(plan.Env, "LINEAGE_ACTIVE=1") {
+				t.Error("Env does not contain LINEAGE_ACTIVE=1")
+			}
+		})
 	}
-	plan, err := Resolve("codex", t.TempDir(), project, []string{"hello"})
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+
+	return false
+}
+
+func TestResolveMaterializeOnlyProviderDoesNotResolveBinary(t *testing.T) {
+	plan, err := Resolve("windsurf", t.TempDir(), config.ProjectConfig{
+		Providers: map[string]config.Provider{"windsurf": {Binary: "/path/that/must-not-be-resolved"}},
+	}, []string{"--project"})
 	if err != nil {
-		t.Fatalf("Resolve() error = %v", err)
+		t.Fatalf("Resolve(windsurf) error = %v", err)
 	}
-	if plan.Binary != "/bin/echo" {
-		t.Fatalf("Binary = %q", plan.Binary)
-	}
-	if len(plan.Args) != 1 || plan.Args[0] != "hello" {
-		t.Fatalf("Args = %#v", plan.Args)
+	if !plan.MaterializeOnly || plan.Binary != "" || len(plan.Args) != 1 || plan.Args[0] != "--project" {
+		t.Fatalf("Resolve(windsurf) = %#v, want materialization-only plan without binary", plan)
 	}
 }
 
@@ -57,6 +111,7 @@ func TestCandidateBinariesFindsMultipleAndSkipsShim(t *testing.T) {
 	claudeB := writeExecutable(t, filepath.Join(dirB, "claude"))
 	writeExecutable(t, filepath.Join(shimDir, "claude"))
 
+	t.Setenv("PATHEXT", ".EXE;.CMD")
 	t.Setenv("PATH", strings.Join([]string{dirA, shimDir, dirB}, string(os.PathListSeparator)))
 
 	candidates := CandidateBinaries("claude", home)
@@ -87,6 +142,7 @@ func TestCandidateBinariesSkipsShimContentOutsideShimsDir(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	t.Setenv("PATHEXT", ".EXE;.CMD")
 	t.Setenv("PATH", strings.Join([]string{strayDir, realDir}, string(os.PathListSeparator)))
 
 	candidates := CandidateBinaries("claude", home)
@@ -119,14 +175,11 @@ func writeExecutable(t *testing.T, base string) string {
 
 // executableSuffix returns the filename suffix a bare command name needs
 // to be discovered by CandidateBinaries on the current OS: none on POSIX,
-// where the executable bit gates it instead, and ".exe" on Windows, which
-// resolves bare commands through PATHEXT and has no executable-bit concept.
-// ".exe" is always present in PATHEXT, whether left at its OS default or
-// overridden, so it's a safe fixed choice for tests that don't set PATHEXT
-// themselves (contrast the PATHEXT-sensitive tests below, which do).
+// where the executable bit gates it instead, and ".EXE" on Windows, matching
+// the PATHEXT value set by the high-level CandidateBinaries tests above.
 func executableSuffix() string {
 	if runtime.GOOS == "windows" {
-		return ".exe"
+		return ".EXE"
 	}
 	return ""
 }

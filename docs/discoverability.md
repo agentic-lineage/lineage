@@ -156,6 +156,7 @@ Current repository pages:
 
 - [What is a Lineage package?](guides/lineage-package.md)
 - [How to share Claude Code and Codex workflows](guides/share-agent-workflows.md)
+- [Compiling an existing agent workspace](guides/compiling-existing-workspaces.md)
 
 Future candidates:
 

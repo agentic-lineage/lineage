@@ -48,6 +48,7 @@ var deniedExtensions = []string{".pem", ".key", ".pfx", ".p12"}
 // secretContentPatterns are high-confidence content signatures: things that
 // are essentially never present in legitimate package source material.
 var secretContentPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`\bAIza[0-9A-Za-z_-]{35}`), // Google API key
 	regexp.MustCompile(`-----BEGIN [A-Z ]*PRIVATE KEY-----`),
 	// AWS access key ID: AKIA is a long-lived user key, ASIA a temporary
 	// STS/assumed-role session key.

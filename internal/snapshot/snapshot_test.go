@@ -250,6 +250,49 @@ func TestLoadManifestDetectsCorruption(t *testing.T) {
 	}
 }
 
+func TestLoadManifestRejectsStructurallyInvalidSelfHashedManifest(t *testing.T) {
+	tests := []struct {
+		name string
+		data string
+	}{
+		{name: "null", data: `null`},
+		{name: "unsupported schema", data: `{"schema":99,"name":"agent-pack","version":"0.1.0","files":[]}`},
+		{name: "explicit zero schema", data: `{"schema":0,"name":"agent-pack","version":"0.1.0","files":[]}`},
+		{name: "missing identity", data: `{"schema":1,"files":[{"path":"lineage.yaml","object":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]}`},
+		{name: "empty files", data: `{"schema":1,"name":"agent-pack","version":"0.1.0","files":[]}`},
+		{name: "missing package manifest", data: `{"schema":1,"name":"agent-pack","version":"0.1.0","files":[{"path":"skills/x/SKILL.md","object":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]}`},
+		{name: "invalid object id", data: `{"schema":1,"name":"agent-pack","version":"0.1.0","files":[{"path":"lineage.yaml","object":"sha256:not-a-hash"}]}`},
+		{name: "path traversal", data: `{"schema":1,"name":"agent-pack","version":"0.1.0","files":[{"path":"../lineage.yaml","object":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]}`},
+		{name: "duplicate path", data: `{"schema":1,"name":"agent-pack","version":"0.1.0","files":[{"path":"lineage.yaml","object":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},{"path":"lineage.yaml","object":"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}]}`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			home := t.TempDir()
+			id, err := putBlob(config.SnapshotsDir(home), []byte(tt.data))
+			if err != nil {
+				t.Fatalf("putBlob() error = %v", err)
+			}
+			if _, err := LoadManifest(home, id); err == nil {
+				t.Fatalf("LoadManifest() error = nil for %s", tt.data)
+			}
+		})
+	}
+}
+
+func TestBlobPathRejectsNonCanonicalObjectIDs(t *testing.T) {
+	for _, id := range []ObjectID{
+		"sha256:abc",
+		"sha256:../../outside",
+		"sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+		"md5:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+	} {
+		if _, err := blobPath(t.TempDir(), id); err == nil {
+			t.Errorf("blobPath(%q) error = nil", id)
+		}
+	}
+}
+
 func TestMaterializeReconstructsPackage(t *testing.T) {
 	home := t.TempDir()
 	dir := buildTestPackage(t, "agent-pack")
@@ -366,5 +409,14 @@ func TestAllManifestIDsDedupesIdenticalSnapshots(t *testing.T) {
 	}
 	if len(ids) != 1 {
 		t.Fatalf("AllManifestIDs() = %v, want identical content deduped to one manifest", ids)
+	}
+}
+
+func TestAllManifestIDsRejectsMalformedStoreEntries(t *testing.T) {
+	home := t.TempDir()
+	badPath := filepath.Join(config.SnapshotsDir(home), "not-a-hash")
+	mustWrite(t, badPath, "junk")
+	if _, err := AllManifestIDs(home); err == nil {
+		t.Fatal("AllManifestIDs() error = nil for malformed store entry")
 	}
 }

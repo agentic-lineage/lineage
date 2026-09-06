@@ -15,22 +15,16 @@ Lineage uses a lean, goal-based development process.
 
 Milestones are goals, not dates.
 
-Current milestones (see the GitHub Milestones page for the authoritative, up-to-date list):
-
-- `Goal: Durable runtime foundations`
-- `Goal: Safe package round trip`
-- `Goal: Receiver setup experience`
-- `Goal: Provider and CI confidence`
-- `Goal: Package materialization`
-- `Goal: Add providers`
-- `Goal: Workflow execution`
-- `Goal: CLI completeness`
+The current program of work is recorded in [ROADMAP.md](../ROADMAP.md). It
+prioritizes integration of the existing provider/diagnostics queue, workflow
+compilation, receiver trust and lifecycle, and real package adoption. The
+GitHub Milestones page remains authoritative for the active issue grouping.
 
 A milestone is done when its issues prove the goal works well enough to trust, not when a calendar date arrives.
 
 Stable releases are cut from completed or explicitly bounded goal milestones.
 See [Release And Versioning Policy](release-versioning.md) for how milestone
-completion maps to `master` promotions and SemVer tags.
+completion maps to `main` promotions and SemVer tags.
 
 ## Issue Shape
 
@@ -58,6 +52,19 @@ Labels should stay minimal:
 
 Avoid creating many area labels. The milestone should explain the goal, and the project board should show workflow status.
 
+## Triage
+
+Maintainers own priority. Issue templates may add `needs-triage`, but contributors should not choose P0/P1/P2 themselves.
+
+After assessment, remove `needs-triage` and use the project board for:
+
+- `Priority`: `P0` release/security/correctness blocker, `P1` active near-term product direction, `P2` accepted roadmap work, or blank/backlog when valid but unsequenced.
+- `Readiness`: ready, blocked, deferred, or needs decision.
+- `Dependencies/blockers`: linked issues or PRs that must land first.
+- `Milestone`: the goal milestone the issue advances, when applicable.
+
+Keep P1 deliberately small so it reflects the work that should actually compete for maintainer attention.
+
 ## Pull Requests
 
 Every PR should:
@@ -70,3 +77,5 @@ Every PR should:
 - Check [public-docs-sync.md](public-docs-sync.md) when a change affects install,
   publishing, receiver activation, setup prompts, provider compatibility, or
   safety wording.
+- Do not document an open provider PR as supported behavior. Its release docs
+  land with the adapter after it is merged into `develop`.

@@ -64,6 +64,11 @@ func (p Plan) DryRunString() string {
 	fmt.Fprintf(&b, "lineage: %s\n", p.Lineage)
 	fmt.Fprintf(&b, "real_binary: %s\n", emptyValue(p.ProviderPlan.Binary))
 	fmt.Fprintf(&b, "args: %s\n", strings.Join(p.ProviderPlan.Args, " "))
+	if p.ProviderPlan.MaterializeOnly {
+		fmt.Fprintf(&b, "launch: disabled (config/materialization only)\n")
+	} else {
+		fmt.Fprintf(&b, "launch: enabled\n")
+	}
 	fmt.Fprintf(&b, "packages:\n")
 	if len(p.Packages) == 0 {
 		fmt.Fprintf(&b, "  none\n")

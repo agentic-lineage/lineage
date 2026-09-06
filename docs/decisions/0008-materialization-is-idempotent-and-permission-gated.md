@@ -19,4 +19,7 @@ A receiver never discovers unexpected files in their project from `lineage run` 
 
 ## Follow-Up
 
-`lineage disable <ref>` (Phase 5 of the distribution plan) can reuse `Apply` directly with a shortened package list — the reconciliation behavior already supports it, no new removal API needed. Setup actions beyond materialization (declared tracker/template files, permission-gated receiver setup — Phase 2 territory) should gate through the same confirmation pattern rather than inventing a second one.
+`lineage disable <ref>` now reuses the reconciliation path with a shortened
+package list, so staged output is removed without a separate cleanup API.
+Declared setup files and directories use the same explicit confirmation pattern
+before they are created.

@@ -1,17 +1,61 @@
 package provider
 
 import (
+	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
 
-func TestKnownIncludesClaudeAndCodex(t *testing.T) {
-	names := map[string]bool{}
-	for _, p := range Known() {
-		names[p.Name] = true
+//	This gives each future provider one obvious test addition and verifies all
+//
+// three parts of its adapter.
+//
+//	The test duplicates the registry data: this way, if someone accidentally
+//
+// changes Auggie's path to .augment/rules, the test should fail and force them
+// to explain the contract change.
+func TestKnownProviders(t *testing.T) {
+	want := []Provider{
+		{
+			Name:        "claude",
+			SkillsDir:   filepath.Join(".claude", "skills"),
+			ContextFile: "CLAUDE.md",
+		},
+		{
+			Name:        "codex",
+			SkillsDir:   filepath.Join(".agents", "skills"),
+			ContextFile: "AGENTS.md",
+		},
+		{
+			Name:        "auggie",
+			SkillsDir:   filepath.Join(".augment", "skills"),
+			ContextFile: "AGENTS.md",
+			renderer:    auggieSkillRenderer{},
+		},
+		{
+			Name:            "windsurf",
+			SkillsDir:       filepath.Join(".windsurf", "rules"),
+			ContextFile:     ".windsurfrules",
+			MaterializeOnly: true,
+		},
+		{
+			Name:        "aider",
+			SkillsDir:   filepath.Join(".aider", "skills"),
+			ContextFile: "CONVENTIONS.md",
+			Config:      AiderConfigAdapter{},
+		},
+		{
+			Name:            "cline",
+			SkillsDir:       ".clinerules",
+			ContextFile:     filepath.Join(".clinerules", "lineage.md"),
+			MaterializeOnly: true,
+		},
 	}
-	if !names["claude"] || !names["codex"] {
-		t.Fatalf("Known() = %v, want claude and codex present", names)
+
+	got := Known()
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("Known() = %#v, want %#v", got, want)
 	}
 }
 
@@ -22,6 +66,36 @@ func TestGetKnownProvider(t *testing.T) {
 	}
 	if p.SkillsDir == "" || p.ContextFile != "AGENTS.md" {
 		t.Fatalf("Get(codex) = %#v", p)
+	}
+}
+
+func TestGetClineProvider(t *testing.T) {
+	p, err := Get("cline")
+	if err != nil {
+		t.Fatalf("Get(cline) error = %v", err)
+	}
+	if p.SkillsDir != ".clinerules" || p.ContextFile != filepath.Join(".clinerules", "lineage.md") || !p.MaterializeOnly {
+		t.Fatalf("Get(cline) = %#v, want project-scoped Cline paths", p)
+	}
+}
+
+func TestGetAiderProvider(t *testing.T) {
+	p, err := Get("aider")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.SkillsDir != filepath.Join(".aider", "skills") || p.ContextFile != "CONVENTIONS.md" || p.Config == nil {
+		t.Fatalf("Get(aider) = %#v, want Aider conventions and config paths", p)
+	}
+}
+
+func TestGetWindsurfProvider(t *testing.T) {
+	p, err := Get("windsurf")
+	if err != nil {
+		t.Fatalf("Get(windsurf) error = %v", err)
+	}
+	if p.SkillsDir != filepath.Join(".windsurf", "rules") || p.ContextFile != ".windsurfrules" || !p.MaterializeOnly {
+		t.Fatalf("Get(windsurf) = %#v, want project-scoped Windsurf paths", p)
 	}
 }
 

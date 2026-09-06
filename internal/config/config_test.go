@@ -115,6 +115,18 @@ func TestLoadProjectConfigRejectsUnsupportedSchema(t *testing.T) {
 	}
 }
 
+func TestLoadProjectConfigRejectsExplicitZeroSchema(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte("schema: 0\nworkspace: product\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := LoadProjectConfig(path); err == nil {
+		t.Fatal("LoadProjectConfig() error = nil, want error for explicit schema zero")
+	}
+}
+
 func TestEnsureGitignoredCreatesFile(t *testing.T) {
 	root := t.TempDir()
 	if err := EnsureGitignored(root); err != nil {

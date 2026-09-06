@@ -6,7 +6,7 @@ Date: 2026-08-19
 
 ## Context
 
-Phase 1 made enabling a package materialize real content for a provider. Before Phase 3 (export/import) lets that content start moving between machines, the package format itself had several open questions that get expensive to answer once packages are actually being shared: whether `lineage.yaml` or the filesystem wins when they disagree about what a package exports, whether a future manifest change can signal "old parsers can't read this," and whether a package reference like `name@version` means anything verifiable.
+Phase 1 made enabling a package materialize real content for a provider. Before the export/import loop let that content move between machines, the package format had several open questions that would become expensive once packages were shared: whether `lineage.yaml` or the filesystem wins when they disagree about exports, whether a future manifest change can signal "old parsers can't read this," and whether a package reference like `name@version` means anything verifiable.
 
 ## Decision
 
@@ -20,4 +20,9 @@ Package identity becomes verifiable instead of just a string. Contributors addin
 
 ## Follow-Up
 
-The digest is not yet signed or attributable to a publisher — that's `docs/decisions` territory for whenever Phase 3's export/import and a trust model land. `lineage package validate` should stay the place that surfaces the digest and any manifest problems together, rather than each check living only as a library function.
+The digest remains unsigned. For registry packages, the website verifies the
+publisher's GitHub identity and binds that identity to the package name; a local
+archive still does not establish who sent it. `lineage package validate` stays
+the place that surfaces the digest and manifest problems together, rather than
+leaving each check only in a library function. See ADR 0011 and ADR 0012 for
+the archive and registry trust boundaries.

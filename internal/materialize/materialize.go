@@ -6,6 +6,7 @@
 package materialize
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -37,8 +38,9 @@ const currentStateSchema = 1
 // provider, so a later call can remove entries that are no longer desired
 // (a package got disabled, a skill got removed) instead of only ever adding.
 type state struct {
-	Schema    int      `json:"schema"`
-	SkillDirs []string `json:"skill_dirs"` // relative to project root, sorted
+	Schema      int                  `json:"schema"`
+	SkillDirs   []string             `json:"skill_dirs"` // relative to project root, sorted
+	ConfigState provider.ConfigState `json:"config_state,omitempty"`
 }
 
 func statePath(projectRoot, providerName string) string {
@@ -95,6 +97,12 @@ func ApplyWorkflow(projectRoot string, adapter provider.Provider, pkg packages.P
 	return apply(projectRoot, adapter, []packages.Package{scoped}, &WorkflowSequence{Name: wf.Name, Steps: wf.Steps})
 }
 
+type preparedSkill struct {
+	sourceDir string
+	source    []byte
+	rendered  []byte
+}
+
 func apply(projectRoot string, adapter provider.Provider, pkgs []packages.Package, wf *WorkflowSequence) error {
 	prev, err := loadState(projectRoot, adapter.Name)
 	if err != nil {
@@ -104,6 +112,29 @@ func apply(projectRoot string, adapter provider.Provider, pkgs []packages.Packag
 	desired, err := desiredSkillDirs(adapter, pkgs)
 	if err != nil {
 		return err
+	}
+
+	prepared := make(map[string]preparedSkill, len(desired))
+	for rel, src := range desired {
+		sourcePath := filepath.Join(src, "SKILL.md")
+
+		source, err := os.ReadFile(sourcePath)
+		if err != nil {
+			return fmt.Errorf("read source skill %s: %w", rel, err)
+		}
+
+		stagedName := filepath.Base(rel)
+
+		rendered, err := adapter.RenderSkill(stagedName, source)
+		if err != nil {
+			return fmt.Errorf("render staged skill %s: %w", rel, err)
+		}
+
+		prepared[rel] = preparedSkill{
+			sourceDir: src,
+			source:    source,
+			rendered:  rendered,
+		}
 	}
 
 	for _, rel := range prev.SkillDirs {
@@ -116,14 +147,23 @@ func apply(projectRoot string, adapter provider.Provider, pkgs []packages.Packag
 	}
 
 	written := make([]string, 0, len(desired))
-	for rel, src := range desired {
+	for rel, skill := range prepared {
 		dest := filepath.Join(projectRoot, rel)
 		if err := os.RemoveAll(dest); err != nil {
 			return fmt.Errorf("clear %s before staging: %w", rel, err)
 		}
-		if err := copyDir(src, dest); err != nil {
+		if err := copyDir(skill.sourceDir, dest); err != nil {
 			return fmt.Errorf("stage skill into %s: %w", rel, err)
 		}
+
+		if !bytes.Equal(skill.source, skill.rendered) {
+			skillPath := filepath.Join(dest, "SKILL.md")
+
+			if err := atomicfile.WriteFile(skillPath, skill.rendered, 0o644); err != nil {
+				return fmt.Errorf("write rendered skill %s: %w", rel, err)
+			}
+		}
+
 		written = append(written, rel)
 	}
 	sort.Strings(written)
@@ -131,8 +171,25 @@ func apply(projectRoot string, adapter provider.Provider, pkgs []packages.Packag
 	if err := writeSummary(filepath.Join(projectRoot, adapter.ContextFile), pkgs, wf); err != nil {
 		return fmt.Errorf("update %s: %w", adapter.ContextFile, err)
 	}
+	configState := prev.ConfigState
+	if adapter.Config != nil {
+		if len(pkgs) == 0 {
+			if err := adapter.Config.Remove(projectRoot, prev.ConfigState); err != nil {
+				return err
+			}
+			configState = provider.ConfigState{}
+		} else {
+			current, err := adapter.Config.Ensure(projectRoot)
+			if err != nil {
+				return err
+			}
+			if len(current.Managed) > 0 {
+				configState = current
+			}
+		}
+	}
 
-	return saveState(projectRoot, adapter.Name, state{Schema: currentStateSchema, SkillDirs: written})
+	return saveState(projectRoot, adapter.Name, state{Schema: currentStateSchema, SkillDirs: written, ConfigState: configState})
 }
 
 // NeedsApproval reports whether calling Apply with pkgs would change
@@ -160,7 +217,14 @@ func NeedsApproval(projectRoot string, adapter provider.Provider, pkgs []package
 	prevDirs := append([]string(nil), prev.SkillDirs...)
 	sort.Strings(prevDirs)
 
-	return !equalStrings(desiredDirs, prevDirs), nil
+	configNeedsApproval := false
+	if adapter.Config != nil {
+		configNeedsApproval, err = adapter.Config.NeedsApproval(projectRoot, prev.ConfigState, len(pkgs) > 0)
+		if err != nil {
+			return false, err
+		}
+	}
+	return !equalStrings(desiredDirs, prevDirs) || configNeedsApproval, nil
 }
 
 // NeedsApprovalForWorkflow is NeedsApproval scoped to a single workflow's
@@ -229,10 +293,16 @@ func DiagnoseState(projectRoot, providerName string) ([]string, error) {
 	}
 	var missing []string
 	for _, rel := range s.SkillDirs {
-		if _, statErr := os.Stat(filepath.Join(projectRoot, rel)); os.IsNotExist(statErr) {
+		info, statErr := os.Lstat(filepath.Join(projectRoot, rel))
+		if os.IsNotExist(statErr) {
 			missing = append(missing, rel)
 		} else if statErr != nil {
 			return nil, statErr
+		} else if !info.IsDir() {
+			// Apply always creates a real directory. A regular file or symlink
+			// at this path is not usable provider state and, in the symlink
+			// case, could make the provider discover content outside the project.
+			missing = append(missing, rel)
 		}
 	}
 	return missing, nil
@@ -250,10 +320,16 @@ func loadState(projectRoot, providerName string) (state, error) {
 	if err := json.Unmarshal(data, &s); err != nil {
 		return state{}, fmt.Errorf("parse %s: %w", statePath(projectRoot, providerName), err)
 	}
-	// schema 0 means the state predates the schema field; treat that as
-	// schema 1, the only schema that ever existed before it was added -
-	// same rule config.LoadProjectConfig uses for config.yaml's schema field.
-	if s.Schema == 0 {
+	// An absent schema field and an explicit `"schema": 0` both decode to
+	// zero. Probe the field as a pointer so only the absent legacy field
+	// defaults to schema 1; explicit zero remains unsupported.
+	var probe struct {
+		Schema *int `json:"schema"`
+	}
+	if err := json.Unmarshal(data, &probe); err != nil {
+		return state{}, fmt.Errorf("parse %s: %w", statePath(projectRoot, providerName), err)
+	}
+	if probe.Schema == nil {
 		s.Schema = currentStateSchema
 	}
 	if s.Schema != currentStateSchema {
