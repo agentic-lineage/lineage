@@ -29,6 +29,7 @@ type PackageReport struct {
 	Agents         []string                    `yaml:"agents,omitempty"`
 	Policies       []string                    `yaml:"policies,omitempty"`
 	RequiredSkills []string                    `yaml:"required_skills"`
+	MCPDependencies []packages.MCPDependency   `yaml:"mcp_dependencies"`
 	Providers      []string                    `yaml:"providers"`
 	Capabilities   PackageReportCapabilities   `yaml:"capabilities"`
 	Portability    *packages.PortabilityReport `yaml:"portability,omitempty"`
@@ -71,6 +72,7 @@ func inspectReport(pkg packages.Package) PackageReport {
 		Agents:         nonNil(pkg.Agents),
 		Policies:       nonNil(pkg.Policies),
 		RequiredSkills: nonNil(pkg.Manifest.Requires.Skills),
+		MCPDependencies: nonNilMCP(pkg.Manifest.Dependencies.MCP),
 		Providers:      nonNil(pkg.Manifest.Entrypoints.Providers()),
 		Capabilities: PackageReportCapabilities{
 			FilesystemRead: nonNil(pkg.Manifest.Capabilities.Filesystem.Read),
@@ -97,6 +99,7 @@ func validateReport(report packages.ValidateReport, discovered *packages.Package
 		Schema:         report.Manifest.Schema,
 		Digest:         report.Digest,
 		RequiredSkills: nonNil(report.Manifest.Requires.Skills),
+		MCPDependencies: nonNilMCP(report.Manifest.Dependencies.MCP),
 		Providers:      nonNil(report.Manifest.Entrypoints.Providers()),
 		Capabilities: PackageReportCapabilities{
 			FilesystemRead: nonNil(report.Manifest.Capabilities.Filesystem.Read),
@@ -116,6 +119,13 @@ func validateReport(report packages.ValidateReport, discovered *packages.Package
 		pr.Policies = nonNil(discovered.Policies)
 	}
 	return pr
+}
+
+func nonNilMCP(values []packages.MCPDependency) []packages.MCPDependency {
+	if values == nil {
+		return []packages.MCPDependency{}
+	}
+	return values
 }
 
 // writeYAML encodes report and writes it to stdout. yaml.v3's Encoder is
