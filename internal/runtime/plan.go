@@ -37,6 +37,9 @@ func BuildPlan(providerName, cwd, home string, args []string) (Plan, error) {
 	if err := packages.ValidateDependencies(resolved); err != nil {
 		return Plan{}, err
 	}
+	if err := packages.ValidateMCPProviderSupport(providerName, resolved); err != nil {
+		return Plan{}, err
+	}
 
 	providerPlan, err := provider.Resolve(providerName, home, found.Config, args)
 	if err != nil {
@@ -64,11 +67,6 @@ func (p Plan) DryRunString() string {
 	fmt.Fprintf(&b, "lineage: %s\n", p.Lineage)
 	fmt.Fprintf(&b, "real_binary: %s\n", emptyValue(p.ProviderPlan.Binary))
 	fmt.Fprintf(&b, "args: %s\n", strings.Join(p.ProviderPlan.Args, " "))
-	if p.ProviderPlan.MaterializeOnly {
-		fmt.Fprintf(&b, "launch: disabled (config/materialization only)\n")
-	} else {
-		fmt.Fprintf(&b, "launch: enabled\n")
-	}
 	fmt.Fprintf(&b, "packages:\n")
 	if len(p.Packages) == 0 {
 		fmt.Fprintf(&b, "  none\n")
@@ -81,6 +79,12 @@ func (p Plan) DryRunString() string {
 		fmt.Fprintf(&b, "    workflows: %s\n", listValue(pkg.Workflows))
 		fmt.Fprintf(&b, "    agents: %s\n", listValue(pkg.Agents))
 		fmt.Fprintf(&b, "    policies: %s\n", listValue(pkg.Policies))
+		if len(pkg.Manifest.Dependencies.MCP) > 0 {
+			fmt.Fprintln(&b, "    mcp_dependencies:")
+			for _, dep := range pkg.Manifest.Dependencies.MCP {
+				fmt.Fprintf(&b, "      - %s (%s)\n", dep.Name, dep.Transport)
+			}
+		}
 		fmt.Fprintf(&b, "    capabilities:\n")
 		fmt.Fprintf(&b, "      filesystem.read: %s\n", listValue(pkg.Manifest.Capabilities.Filesystem.Read))
 		fmt.Fprintf(&b, "      network: %s\n", listValue(pkg.Manifest.Capabilities.Network))
