@@ -490,6 +490,7 @@ func runPackageValidate(dir string, yamlOutput bool, stdout, stderr io.Writer) e
 	fmt.Fprintf(stdout, "capabilities:\n")
 	fmt.Fprintf(stdout, "  filesystem.read: %s\n", listValue(report.Manifest.Capabilities.Filesystem.Read))
 	fmt.Fprintf(stdout, "  network: %s\n", listValue(report.Manifest.Capabilities.Network))
+	writeMCPDependencies(stdout, report.Manifest.Dependencies.MCP)
 	packages.WritePortabilityReport(stdout, packages.NewPortabilityReport(report))
 
 	if len(report.Notes) > 0 {
@@ -1132,10 +1133,29 @@ func runInspect(args []string, home string, stdout, stderr io.Writer) error {
 	fmt.Fprintf(stdout, "agents: %s\n", listValue(pkg.Agents))
 	fmt.Fprintf(stdout, "policies: %s\n", listValue(pkg.Policies))
 	fmt.Fprintf(stdout, "requires.skills: %s\n", listValue(pkg.Manifest.Requires.Skills))
+	writeMCPDependencies(stdout, pkg.Manifest.Dependencies.MCP)
 	fmt.Fprintf(stdout, "capabilities:\n")
 	fmt.Fprintf(stdout, "  filesystem.read: %s\n", listValue(pkg.Manifest.Capabilities.Filesystem.Read))
 	fmt.Fprintf(stdout, "  network: %s\n", listValue(pkg.Manifest.Capabilities.Network))
 	return nil
+}
+
+func writeMCPDependencies(stdout io.Writer, deps []packages.MCPDependency) {
+	fmt.Fprintln(stdout, "dependencies.mcp:")
+	if len(deps) == 0 {
+		fmt.Fprintln(stdout, "  none")
+		return
+	}
+	for _, dep := range deps {
+		fmt.Fprintf(stdout, "  - %s (%s", dep.Name, dep.Transport)
+		if dep.URL != "" {
+			fmt.Fprintf(stdout, ", %s", dep.URL)
+		}
+		if dep.Auth == "receiver" {
+			fmt.Fprint(stdout, ", receiver-provided authentication")
+		}
+		fmt.Fprintln(stdout, ")")
+	}
 }
 
 func runProvider(ctx context.Context, args []string, home string, stdin *bufio.Reader, stdout, stderr io.Writer) error {

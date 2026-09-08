@@ -37,6 +37,9 @@ func BuildPlan(providerName, cwd, home string, args []string) (Plan, error) {
 	if err := packages.ValidateDependencies(resolved); err != nil {
 		return Plan{}, err
 	}
+	if err := packages.ValidateMCPProviderSupport(providerName, resolved); err != nil {
+		return Plan{}, err
+	}
 
 	providerPlan, err := provider.Resolve(providerName, home, found.Config, args)
 	if err != nil {
@@ -81,6 +84,12 @@ func (p Plan) DryRunString() string {
 		fmt.Fprintf(&b, "    workflows: %s\n", listValue(pkg.Workflows))
 		fmt.Fprintf(&b, "    agents: %s\n", listValue(pkg.Agents))
 		fmt.Fprintf(&b, "    policies: %s\n", listValue(pkg.Policies))
+		if len(pkg.Manifest.Dependencies.MCP) > 0 {
+			fmt.Fprintln(&b, "    mcp_dependencies:")
+			for _, dep := range pkg.Manifest.Dependencies.MCP {
+				fmt.Fprintf(&b, "      - %s (%s)\n", dep.Name, dep.Transport)
+			}
+		}
 		fmt.Fprintf(&b, "    capabilities:\n")
 		fmt.Fprintf(&b, "      filesystem.read: %s\n", listValue(pkg.Manifest.Capabilities.Filesystem.Read))
 		fmt.Fprintf(&b, "      network: %s\n", listValue(pkg.Manifest.Capabilities.Network))

@@ -67,6 +67,25 @@ func TestLoadManifestAcceptsSemverStyleVersion(t *testing.T) {
 	}
 }
 
+func TestLoadManifestRejectsMCPFieldsOutsidePortableContract(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, ManifestFileName), `
+name: safe-pack
+version: 1.0.0
+dependencies:
+  mcp:
+    - name: docs
+      transport: streamable-http
+      url: https://mcp.example.com/mcp
+      headers:
+        Authorization: Bearer not-a-real-token
+`)
+
+	if _, err := LoadManifest(dir); err == nil {
+		t.Fatal("LoadManifest() error = nil, want unsupported MCP headers to be rejected")
+	}
+}
+
 func TestDefaultManifestRoundTripsCapabilities(t *testing.T) {
 	dir := t.TempDir()
 	manifest := DefaultManifest("cap-pack")

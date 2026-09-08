@@ -40,8 +40,28 @@ type Manifest struct {
 	Exports      Exports      `yaml:"exports"`
 	Requires     Requires     `yaml:"requires"`
 	Entrypoints  Entrypoints  `yaml:"entrypoints"`
+	Dependencies Dependencies `yaml:"dependencies" json:"dependencies"`
 	Capabilities Capabilities `yaml:"capabilities"`
 	Setup        Setup        `yaml:"setup"`
+}
+
+// Dependencies are runtime requirements that are part of a package's
+// behavior but are not package files. They are deliberately provider-neutral:
+// adapters decide whether and how they can materialize a declared dependency.
+type Dependencies struct {
+	MCP []MCPDependency `yaml:"mcp" json:"mcp"`
+}
+
+// MCPDependency declares one Model Context Protocol server. Auth is a
+// requirement label, never a credential: receivers supply authentication in
+// their own environment or provider configuration.
+type MCPDependency struct {
+	Name      string   `yaml:"name" json:"name"`
+	Transport string   `yaml:"transport" json:"transport"` // stdio, streamable-http, sse
+	Command   string   `yaml:"command,omitempty" json:"command,omitempty"`
+	Args      []string `yaml:"args,omitempty" json:"args,omitempty"`
+	URL       string   `yaml:"url,omitempty" json:"url,omitempty"`
+	Auth      string   `yaml:"auth,omitempty" json:"auth,omitempty"` // none, receiver
 }
 
 // Setup declares local resources a package's workflow expects to exist -
@@ -129,6 +149,7 @@ func DefaultManifest(name string) Manifest {
 			Skills: []string{},
 		},
 		Entrypoints: Entrypoints{},
+		Dependencies: Dependencies{MCP: []MCPDependency{}},
 		Capabilities: Capabilities{
 			Filesystem: FilesystemCapabilities{Read: []string{}},
 			Network:    []string{},
@@ -149,6 +170,9 @@ func LoadManifest(dir string) (Manifest, error) {
 
 	var manifest Manifest
 	if err := yaml.Unmarshal(data, &manifest); err != nil {
+		return Manifest{}, fmt.Errorf("parse manifest %s: %w", path, err)
+	}
+	if err := validateMCPManifestFields(data); err != nil {
 		return Manifest{}, fmt.Errorf("parse manifest %s: %w", path, err)
 	}
 	if manifest.Name == "" {
