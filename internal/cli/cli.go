@@ -490,6 +490,7 @@ func runPackageValidate(dir string, yamlOutput bool, stdout, stderr io.Writer) e
 	fmt.Fprintf(stdout, "capabilities:\n")
 	fmt.Fprintf(stdout, "  filesystem.read: %s\n", listValue(report.Manifest.Capabilities.Filesystem.Read))
 	fmt.Fprintf(stdout, "  network: %s\n", listValue(report.Manifest.Capabilities.Network))
+	writeMCPDependencies(stdout, report.Manifest.Dependencies.MCP)
 	packages.WritePortabilityReport(stdout, packages.NewPortabilityReport(report))
 
 	if len(report.Notes) > 0 {
@@ -1132,10 +1133,29 @@ func runInspect(args []string, home string, stdout, stderr io.Writer) error {
 	fmt.Fprintf(stdout, "agents: %s\n", listValue(pkg.Agents))
 	fmt.Fprintf(stdout, "policies: %s\n", listValue(pkg.Policies))
 	fmt.Fprintf(stdout, "requires.skills: %s\n", listValue(pkg.Manifest.Requires.Skills))
+	writeMCPDependencies(stdout, pkg.Manifest.Dependencies.MCP)
 	fmt.Fprintf(stdout, "capabilities:\n")
 	fmt.Fprintf(stdout, "  filesystem.read: %s\n", listValue(pkg.Manifest.Capabilities.Filesystem.Read))
 	fmt.Fprintf(stdout, "  network: %s\n", listValue(pkg.Manifest.Capabilities.Network))
 	return nil
+}
+
+func writeMCPDependencies(stdout io.Writer, deps []packages.MCPDependency) {
+	fmt.Fprintln(stdout, "dependencies.mcp:")
+	if len(deps) == 0 {
+		fmt.Fprintln(stdout, "  none")
+		return
+	}
+	for _, dep := range deps {
+		fmt.Fprintf(stdout, "  - %s (%s", dep.Name, dep.Transport)
+		if dep.URL != "" {
+			fmt.Fprintf(stdout, ", %s", dep.URL)
+		}
+		if dep.Auth == "receiver" {
+			fmt.Fprint(stdout, ", receiver-provided authentication")
+		}
+		fmt.Fprintln(stdout, ")")
+	}
 }
 
 func runProvider(ctx context.Context, args []string, home string, stdin *bufio.Reader, stdout, stderr io.Writer) error {
@@ -1196,9 +1216,6 @@ func runProvider(ctx context.Context, args []string, home string, stdin *bufio.R
 	if err := materialize.Apply(plan.ProjectRoot, adapter, plan.Packages); err != nil {
 		fmt.Fprintln(stderr, err)
 		return err
-	}
-	if plan.ProviderPlan.MaterializeOnly {
-		return nil
 	}
 
 	if err := provider.Launch(plan.ProviderPlan); err != nil {
@@ -1284,9 +1301,6 @@ func runWorkflow(args []string, home string, stdin *bufio.Reader, stdout, stderr
 		fmt.Fprintln(stderr, err)
 		return err
 	}
-	if providerPlan.MaterializeOnly {
-		return nil
-	}
 
 	if err := provider.Launch(providerPlan); err != nil {
 		fmt.Fprintln(stderr, err)
@@ -1302,12 +1316,6 @@ func workflowPlanString(wf packages.Workflow, pkg packages.Package, providerName
 	fmt.Fprintf(&b, "package: %s@%s\n", pkg.Manifest.Name, pkg.Manifest.Version)
 	fmt.Fprintf(&b, "provider: %s\n", providerName)
 	fmt.Fprintf(&b, "real_binary: %s\n", emptyValue(providerPlan.Binary))
-	fmt.Fprintf(&b, "args: %s\n", strings.Join(providerPlan.Args, " "))
-	if providerPlan.MaterializeOnly {
-		fmt.Fprintf(&b, "launch: disabled (config/materialization only)\n")
-	} else {
-		fmt.Fprintf(&b, "launch: enabled\n")
-	}
 	fmt.Fprintf(&b, "steps:\n")
 	for i, step := range wf.Steps {
 		fmt.Fprintf(&b, "  %d. %s\n", i+1, step)
@@ -1445,8 +1453,8 @@ func pathIndexOf(pathEntries []string, dir string) int {
 
 func printUsage(w io.Writer) {
 	fmt.Fprintln(w, strings.TrimSpace(fmt.Sprintf(`
-Lineage - package a working agent setup, share it, and run it through a
-supported agent provider.
+Lineage - package a working agent setup, share it, and run it through your
+own Claude or Codex.
 
 Usage:
   lineage <command> [arguments]
@@ -1471,13 +1479,13 @@ Using a package:
   list                                    show enabled packages
   inspect <path-or-id> [--yaml]            show a package's contents
   graph list [--yaml]                      show what this project's state descends from
-  run <%s> [--dry-run] [--yes]  apply packages and launch where supported
+  run <%s> [--dry-run] [--yes]  launch a provider with packages applied
   workflow run <name> <%s>      run one declared workflow
 
 Setup:
   init user                               create the user package directory
   init workspace <name>                   create a shared workspace
-  install-shims                           put lineage in front of launchable providers on PATH
+  install-shims                           put lineage in front of claude/codex on PATH
   doctor                                  check config, PATH, and provider setup
 
   -h, --help                              show this help
