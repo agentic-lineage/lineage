@@ -44,3 +44,4 @@ Each record should include:
 - [0014 Content-Addressed Snapshot Store Separates Objects From Manifests](0014-content-addressed-snapshot-store-separates-objects-from-manifests.md)
 - [0015 The `.lineage` Directory Is A Versioned, Enumerated Container With A Gitignore Default](0015-the-lineage-directory-is-a-versioned-enumerated-container.md)
 - [0016 Prioritize Package Distribution And Behavioral Compilation](0016-prioritize-package-distribution-and-behavioral-compilation.md)
+- [0017 Package Content Addressing Has A Complete, Verifiable Install Contract](0017-package-content-addressing-contract.md)
