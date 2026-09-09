@@ -44,9 +44,10 @@ const (
 // InstructionFinding is one risky-instruction match: which file, what kind
 // of risk, how severe, and a short human-readable explanation. Excerpt is
 // a bounded, single-line quote of the matching line only — never the full
-// file — so a finding is always safe to print without risking a second
-// disclosure of a secret that happens to sit next to the risky instruction
-// in the same file.
+// file — and has any credential-shaped substring redacted (see
+// redactSecretLike) before it is ever stored, so a finding is always safe
+// to print without risking a second disclosure of a secret that happens to
+// sit next to the risky instruction in the same file.
 type InstructionFinding struct {
 	Path     string
 	Category RiskCategory
@@ -340,7 +341,12 @@ func applyDisableSafetyEscalation(findings []InstructionFinding) []InstructionFi
 // [start,end) — the matched pattern's location — so a finding always
 // carries enough context to review without ever including a full file.
 // Runs of whitespace collapse to a single space so a match spanning a
-// line break still reads as one short quote.
+// line break still reads as one short quote. The line is redacted before
+// truncation: a risky-instruction match (particularly exfiltration or
+// credential_collection) is exactly the kind of line likely to have a real
+// secret sitting right next to it, and an excerpt exists to show *why*
+// something was flagged, not to become a second way to leak the credential
+// the finding is warning about.
 func excerptAround(content string, start, end int) string {
 	lineStart := strings.LastIndexByte(content[:start], '\n') + 1
 	lineEnd := len(content)
@@ -349,8 +355,42 @@ func excerptAround(content string, start, end int) string {
 	}
 
 	line := strings.Join(strings.Fields(content[lineStart:lineEnd]), " ")
+	line = redactSecretLike(line)
 	if runes := []rune(line); len(runes) > maxExcerptLength {
 		line = string(runes[:maxExcerptLength]) + "…"
 	}
 	return line
+}
+
+// secretLikeExcerptPatterns are applied to every Excerpt before it is ever
+// stored or printed, so a risky-instruction excerpt can never itself leak a
+// credential sitting on the same line as the flagged pattern. This
+// deliberately reuses the same high-confidence patterns ScanForSecrets
+// matches on (docs/decisions/0009's "precise over exhaustive" tradeoff),
+// plus a generic key=value / key: value form for common credential names —
+// broader than ScanForSecrets needs to be, because here the goal is never
+// printing a plausible secret value, not just catching known token formats.
+var secretLikeExcerptPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`-----BEGIN [A-Z ]*PRIVATE KEY-----`),
+	regexp.MustCompile(`\b(AKIA|ASIA)[0-9A-Z]{16}\b`),
+	regexp.MustCompile(`\bgh[pousr]_[A-Za-z0-9]{20,}`),
+	regexp.MustCompile(`\bgithub_pat_[A-Za-z0-9_]{30,}`),
+	regexp.MustCompile(`(?i)\b(api[-_ ]?keys?|tokens?|secrets?|passwords?|passwd|pwd|credentials?)\s*[:=]\s*['"]?[^\s'",;]+`),
+}
+
+// redactSecretLike replaces anything in s that looks like a credential
+// value with a fixed placeholder. For the generic "name: value" /
+// "name=value" pattern only the value is redacted, so the excerpt still
+// shows which credential name the flagged content referenced without ever
+// printing the value itself.
+func redactSecretLike(s string) string {
+	for _, p := range secretLikeExcerptPatterns {
+		s = p.ReplaceAllStringFunc(s, func(m string) string {
+			if idx := strings.IndexAny(m, ":="); idx >= 0 {
+				return strings.TrimRight(m[:idx+1], " ") + " [REDACTED]"
+			}
+			return "[REDACTED]"
+		})
+	}
+	return s
 }

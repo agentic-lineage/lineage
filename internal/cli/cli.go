@@ -837,10 +837,14 @@ func enableDeclinePrompt(a enableAssessment) (prompt, declineMsg string) {
 // and reporting readiness for a package that was never turned on.
 //
 // preConfirmed is set by runAdd, which has already run this exact
-// assessment and gotten its own single yes/no before calling in - it skips
-// enableRef's own confirm() read (but not its printing) so a receiver never
-// answers the same question twice in one `add` invocation (see
-// docs/decisions/0016's Consequences).
+// assessment, printed its risk/unscanned findings, and gotten its own
+// single yes/no before calling in - it skips both enableRef's own
+// printEnableWarnings call and its confirm() read, so a receiver never sees
+// the same risk warnings twice or answers the same question twice in one
+// `add` invocation (see docs/decisions/0016's Consequences). runAdd only
+// ever sets it when it actually printed that section itself (showsRiskInfo
+// - warnings or unscanned files present); a setup-only package still gets
+// its setup plan shown and confirmed here, exactly as before.
 func enableRef(ref, home string, autoApprove, preConfirmed bool, stdin *bufio.Reader, stdout, stderr io.Writer) (bool, error) {
 	a, err := assessEnable(ref, home)
 	if err != nil {
@@ -861,7 +865,9 @@ func enableRef(ref, home string, autoApprove, preConfirmed bool, stdin *bufio.Re
 	// sequential yes/no questions about the same package is still worse UX
 	// than covering everything with one.
 	if a.needsConfirmation() {
-		printEnableWarnings(stdout, a, false)
+		if !preConfirmed {
+			printEnableWarnings(stdout, a, false)
+		}
 		if !autoApprove && !preConfirmed {
 			prompt, declineMsg := enableDeclinePrompt(a)
 			fmt.Fprint(stdout, prompt)
@@ -1067,8 +1073,9 @@ func runAdd(args []string, home string, stdin *bufio.Reader, stdout, stderr io.W
 	// A risk warning or unscanned file has to be seen and approved before a
 	// receiver even decides to enable, so when either is present, add folds
 	// that decision and any setup preview into the one combined confirm
-	// below (preConfirmed=true then skips enableRef's own read - see its
-	// doc comment). A setup-only package has nothing risk-related to show
+	// below (preConfirmed=true then skips enableRef's own printing and read
+	// of this same section - see its doc comment). A setup-only package has
+	// nothing risk-related to show
 	// upfront: add asks its plain "enable this?" question exactly as
 	// before, and enableRef shows the setup plan and asks its own separate
 	// question, unchanged from before instruction-risk scanning existed

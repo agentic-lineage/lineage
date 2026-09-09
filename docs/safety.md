@@ -35,6 +35,7 @@ author → validate → export/publish → import/pull → inspect → enable �
 - **Export authority**: if `exports.agents`/`exports.workflows` names something, it must exist on disk — a declared-but-missing export is a blocking error, not a warning.
 - **Entrypoint path safety**: `entrypoints.claude`/`entrypoints.codex` are checked with `SafeJoin`, a traversal guard scoped specifically to package-controlled input (ADR 0010) — this never applies to a path you type yourself at the CLI.
 - **Secret scan**: see [Secret Scanning](#secret-scanning-what-it-catches-and-what-it-doesnt) below.
+- **Instruction-risk scan**: see [Instruction-Risk Scanning](#instruction-risk-scanning) below.
 - **Content digest**: a `sha256` digest over the manifest and every content directory, computed in deterministic order, so `name@version` pairs with "and this is exactly what that resolved to" (ADR 0005).
 
 A package with any blocking error fails validation and refuses to export/publish. Informational notes (e.g. a required skill this package doesn't itself provide, which may come from another package at enable time) don't block.
@@ -75,7 +76,19 @@ Findings report a file path and a human-readable reason only — the matched val
 
 ## Instruction-Risk Scanning
 
-**Not implemented in this build.** Lineage does not scan skills, workflows, or policy content for prompt-injection-style instructions aimed at an agent reading them (e.g. "ignore your previous instructions and..."). Package content — skills, workflows, agents, policies, references — should be read as untrusted *content*, never as instructions from Lineage itself or from the receiver, but nothing currently flags a package that tries to blur that line. Read what you enable.
+`internal/packages.ScanForInstructionRisk` (ADR 0016) checks a package's instruction-bearing surfaces — `skills/`, `workflows/`, `agents/`, `policies/`, `adapters/`, and `setup.files[].template` — against a small, explicit, documented pattern list, the same "precise over exhaustive" tradeoff `ScanForSecrets` already made. `references/` is excluded: it's declared payload data, not directives.
+
+Six categories are checked, each with an initial severity:
+
+- **Block:** `exfiltration` (a network verb near a credential-shaped noun), `silent_destructive` (a destructive verb paired with "without confirmation/asking/permission"), `credential_collection` (collecting passwords, private keys, or session data).
+- **Warn:** `prompt_override` ("ignore previous instructions" and equivalents), `broad_local_read` ("read all files", "scan the home directory").
+- **Conditional:** `disable_safety` ("disable safety checks", "do not ask the user") warns on its own but escalates to a block when the *same file* also contains a `silent_destructive`, `credential_collection`, or `exfiltration` match — disable-safety language alone is common in benign contexts (a skill that legitimately skips confirmation for read-only steps).
+
+A finding carries a bounded, single-line excerpt of the matching line, with any credential-shaped substring (a key=value pair, a recognized token/private-key format) redacted before it is ever stored or printed — the same "safe to print" guarantee `ScanForSecrets` findings already carry, applied here because a risky-instruction line is exactly the kind of line likely to have a real secret sitting next to it.
+
+This scanning runs where it matters in the lifecycle: `Export`/`Publish` refuse outright on a blocking finding (via `ValidateReport.BlockingCount()`, same gate secret-scan errors already use); `enable` refuses on a blocking finding and requires explicit confirmation on a warning; `inspect` lists findings by file in both human-readable and `--yaml` output.
+
+As with secret scanning, this is a **practical risk signal, not a complete prompt-injection defense** — the pattern list is small and literal, with no obfuscation resistance (Unicode normalization, zero-width-character stripping) in this pass. A sufficiently obfuscated instruction will not be caught, and a clean scan is not a safety guarantee. Package content — skills, workflows, agents, policies, references — should still be read as untrusted *content*, never as instructions from Lineage itself or from the receiver. Read what you enable.
 
 ## What Package Authors Should Never Publish
 
