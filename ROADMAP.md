@@ -29,6 +29,10 @@ and pull-request state remains the source of truth for individual tasks.
 - A high-confidence Google API-key pattern in package secret scanning (#229).
 - Read-only source-workspace evidence inventory: deterministic classification,
   content digests, and literal Markdown citation edges (#203).
+- A versioned, provider-neutral behavioral model — ordered steps with
+  evidence-linked claims for inputs, outputs, skills, tools, and references,
+  plus setup needs, validation gates, and explicit unresolved decisions
+  (#103, ADR 0017).
 
 ## Now
 
@@ -42,12 +46,12 @@ and pull-request state remains the source of truth for individual tasks.
    - #210, #220–#222: Cursor, Aider, Cline, and Windsurf adapters.
    - #219: extend `lineage doctor` using the `.lineage` container contract.
 
-2. **Turn existing workspaces into reviewable packages.** #203 completed the
-   evidence-inventory stage. The next sequence is deliberately constrained:
-   behavioral model (#103), agent-assisted analysis (#104), provider-neutral
-   artifact compilation (#106), then portability and behavior validation
-   (#109, #113). The compiler must not execute source scripts or silently
-   invent missing behavior.
+2. **Turn existing workspaces into reviewable packages.** #203 and #103
+   completed the evidence-inventory and behavioral-model stages. The next
+   sequence is deliberately constrained: agent-assisted analysis (#104),
+   provider-neutral artifact compilation (#106), then portability and
+   behavior validation (#109, #113). The compiler must not execute source
+   scripts or silently invent missing behavior.
 
 3. **Close receiver trust and lifecycle gaps before broader distribution.**
    Exact-version pinning is the current rollback path (#122). Define registry
