@@ -43,14 +43,20 @@ The receiver should be able to inspect these contents before enabling a package.
   workspace that is not yet a Lineage package. It classifies files and records
   literal Markdown citations; it neither executes nor semantically interprets
   source content.
+- `internal/model`: a versioned, provider-neutral behavioral model built
+  from an `internal/inventory.Inventory` — ordered steps with evidence-linked
+  claims, setup needs, validation gates, and explicit unresolved decisions.
+  It structures evidence the inventory already found; it does not resolve
+  ambiguity or execute anything it discovers.
 - `agenticlineage.vercel.app`: public website, package registry API, installer endpoint, package directory, and per-package bootstrap prompts. The website is the registry boundary: it verifies GitHub publisher identity, enforces package ownership and immutable `name@version` rows, rate-limits public routes, records aggregate package metrics, and proxies private package archives to receivers.
 
 ## Product Scope
 
 The released product is the local package runtime. The next planned layer is
-behavior-preserving compilation of existing workspaces, beginning with
-`internal/inventory`; it is not yet a user-facing command or a promise that
-Lineage can recover every workflow's intent.
+behavior-preserving compilation of existing workspaces: `internal/inventory`
+(evidence) feeding `internal/model` (behavioral model); it is not yet a
+user-facing command or a promise that Lineage can recover every workflow's
+intent.
 
 Provider adapters are released only when their code has merged into `develop`.
 An open adapter pull request is not a compatibility claim. Enterprise context
