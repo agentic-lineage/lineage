@@ -41,6 +41,9 @@ func Discover(dir string) (Package, error) {
 	if err := validateEntrypoint(dir, "codex", manifest.Entrypoints.Codex); err != nil {
 		return Package{}, fmt.Errorf("%s: %w", dir, err)
 	}
+	if errors := ValidateMCPDependencies(manifest.Dependencies.MCP, manifest.Capabilities.Network); len(errors) > 0 {
+		return Package{}, fmt.Errorf("%s: %s", dir, errors[0])
+	}
 
 	workflows, err := applyExportAuthority("workflow", manifest.Exports.Workflows, discoverNamesWithFile(filepath.Join(dir, "workflows"), WorkflowFileName))
 	if err != nil {

@@ -124,6 +124,31 @@ func TestValidateNotesUnsatisfiedRequiredSkillWithoutFailing(t *testing.T) {
 	}
 }
 
+func TestValidateRejectsMCPServerOutsideDeclaredNetworkCapability(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "mcp-pack")
+	if err := InitPackage(root, "mcp-pack"); err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := LoadManifest(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest.Dependencies.MCP = []MCPDependency{{
+		Name: "docs", Transport: "streamable-http", URL: "https://mcp.example.com/mcp", Auth: "receiver",
+	}}
+	if err := SaveManifest(root, manifest); err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := Validate(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Passed() {
+		t.Fatal("report.Passed() = true, want false for an undeclared remote MCP host")
+	}
+}
+
 func TestValidateFailsForUnloadableManifest(t *testing.T) {
 	root := t.TempDir()
 	mustWrite(t, filepath.Join(root, ManifestFileName), "schema: 99\nname: future\nversion: 1.0.0\n")

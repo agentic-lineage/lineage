@@ -183,6 +183,37 @@ package/
 These folders are intentionally plain. A receiver should be able to open the
 package and see what it contains before enabling it.
 
+### MCP dependencies
+
+Packages can declare an MCP server requirement under `dependencies.mcp`. The
+declaration is inspectable before enablement; it contains connection metadata,
+not credentials. Remote MCP hosts must also be declared in `capabilities.network`.
+
+```yaml
+dependencies:
+  mcp:
+    - name: github
+      transport: stdio
+      command: npx
+      args: ["-y", "@modelcontextprotocol/server-github"]
+      auth: receiver
+    - name: docs
+      transport: streamable-http
+      url: https://mcp.example.com/mcp
+      auth: receiver
+capabilities:
+  network: [mcp.example.com]
+```
+
+Supported transports are `stdio`, `streamable-http`, and `sse`. Lineage does
+not accept tokens, passwords, headers, or environment values in this package
+surface; receivers configure authentication locally.
+
+The current Claude and Codex adapters do not yet materialize MCP configuration.
+`lineage run` therefore stops with a clear error rather than silently omitting
+a declared server; native configuration merging belongs in the follow-up adapter
+work.
+
 ## How Lineage Fits Claude, Codex, And Other Agents
 
 Lineage keeps provider-specific behavior behind adapter boundaries and previews

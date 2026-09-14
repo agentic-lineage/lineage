@@ -54,6 +54,7 @@ func Validate(dir string) (ValidateReport, error) {
 	if err := validateEntrypoint(dir, "codex", manifest.Entrypoints.Codex); err != nil {
 		report.Errors = append(report.Errors, err.Error())
 	}
+	report.Errors = append(report.Errors, ValidateMCPDependencies(manifest.Dependencies.MCP, manifest.Capabilities.Network)...)
 
 	// Setup paths are receiver-project-relative at apply time, but their
 	// safety (not absolute, can't escape via "..") doesn't depend on which
