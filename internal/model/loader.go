@@ -68,6 +68,35 @@ func computeInventoryDigest(inv inventory.Inventory) string {
 	return "sha256:" + hex.EncodeToString(h.Sum(nil))
 }
 
+// ParseModel parses raw JSON into a BehavioralModel and canonicalizes
+// Decision order (sorted by ID) — the guarantee BehavioralModel.Decisions'
+// doc comment already promises but that nothing previously enforced (flagged
+// in PR #275 review). This is the one place every serialized model passes
+// through: internal/analysis.Analyze calls this, never json.Unmarshal
+// directly, so the promise holds for every model that reaches Validate or a
+// compiler downstream.
+//
+// Schema is deliberately not checked here. Unlike LoadInventory (which
+// defaults an absent field for pre-existing stored inventories with no
+// schema history to default against), BehavioralModel has no such legacy —
+// this is the first reader that ever existed for it. An absent or wrong
+// schema simply leaves Schema at whatever json.Unmarshal produced, and
+// Validate already reports any mismatch as an Errors entry. Duplicating
+// that check here would just create two disagreeing sources of truth for
+// the same invariant.
+func ParseModel(data []byte) (BehavioralModel, error) {
+	var m BehavioralModel
+	if err := json.Unmarshal(data, &m); err != nil {
+		return BehavioralModel{}, fmt.Errorf("parse behavioral model: %w", err)
+	}
+	sortDecisions(m.Decisions)
+	return m, nil
+}
+
+func sortDecisions(decisions []Decision) {
+	sort.Slice(decisions, func(i, j int) bool { return decisions[i].ID < decisions[j].ID })
+}
+
 // NewSkeletonFromInventory produces a minimal, mechanically-derived
 // BehavioralModel skeleton from inv — not semantic modeling, that belongs
 // to a later, agent-assisted analysis stage. It creates one model-level
@@ -99,5 +128,10 @@ func NewSkeletonFromInventory(inv inventory.Inventory) BehavioralModel {
 		})
 	}
 
+	// Entries is already sorted by Path (inventory.Discover's contract) and
+	// ID is "decision-"+Path, so this is already sorted in practice — kept
+	// explicit for symmetry with ParseModel rather than relying on that
+	// coincidence staying true.
+	sortDecisions(m.Decisions)
 	return m
 }

@@ -82,6 +82,8 @@ func Execute(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 		return runInspect(args[1:], home, stdout, stderr)
 	case "graph":
 		return runGraph(args[1:], stdout, stderr)
+	case "analyze":
+		return runAnalyze(ctx, args[1:], stdout, stderr)
 	case "run":
 		return runProvider(ctx, args[1:], home, in, stdout, stderr)
 	case "workflow":
@@ -1471,6 +1473,7 @@ Using a package:
   list                                    show enabled packages
   inspect <path-or-id> [--yaml]            show a package's contents
   graph list [--yaml]                      show what this project's state descends from
+  analyze <path> [--fixture f] [--yaml]    run agent-assisted analysis over a source workspace
   run <%s> [--dry-run] [--yes]  apply packages and launch where supported
   workflow run <name> <%s>      run one declared workflow
 

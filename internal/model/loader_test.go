@@ -111,6 +111,59 @@ func TestNewSkeletonFromInventoryProducesModelLevelDecisions(t *testing.T) {
 	}
 }
 
+func TestParseModelSortsDecisionsByID(t *testing.T) {
+	data := []byte(`{
+		"schema": 1,
+		"decisions": [
+			{"id": "decision-c"},
+			{"id": "decision-a"},
+			{"id": "decision-b"}
+		]
+	}`)
+
+	m, err := ParseModel(data)
+	if err != nil {
+		t.Fatalf("ParseModel() error = %v", err)
+	}
+	got := []string{m.Decisions[0].ID, m.Decisions[1].ID, m.Decisions[2].ID}
+	want := []string{"decision-a", "decision-b", "decision-c"}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("Decisions order = %v, want %v", got, want)
+		}
+	}
+}
+
+func TestParseModelRejectsMalformedJSON(t *testing.T) {
+	if _, err := ParseModel([]byte("not json")); err == nil {
+		t.Fatal("ParseModel() error = nil, want error for malformed JSON")
+	}
+}
+
+func TestNewSkeletonFromInventoryDecisionsAreSorted(t *testing.T) {
+	root := t.TempDir()
+	// Filenames chosen so path-sort order and ID-sort order would coincide
+	// anyway if left unsorted; the point of this test is that
+	// NewSkeletonFromInventory calls sortDecisions explicitly rather than
+	// relying on that coincidence, so it stays correct if the underlying
+	// entries ever change order.
+	mustWrite(t, filepath.Join(root, "c-AGENTS.md"), "# c\n")
+	mustWrite(t, filepath.Join(root, "a-AGENTS.md"), "# a\n")
+	mustWrite(t, filepath.Join(root, "b-AGENTS.md"), "# b\n")
+
+	inv, err := inventory.Discover(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	skeleton := NewSkeletonFromInventory(inv)
+
+	for i := 1; i < len(skeleton.Decisions); i++ {
+		if skeleton.Decisions[i-1].ID > skeleton.Decisions[i].ID {
+			t.Fatalf("Decisions not sorted by ID: %q before %q", skeleton.Decisions[i-1].ID, skeleton.Decisions[i].ID)
+		}
+	}
+}
+
 func mustWrite(t *testing.T, path string, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
