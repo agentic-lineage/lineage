@@ -39,6 +39,12 @@ func (c RegistryConfig) baseURL() string {
 	return DefaultRegistryURL
 }
 
+// BaseURL returns the normalized registry URL for callers that implement
+// higher-level distribution protocols on top of the registry API.
+func (c RegistryConfig) BaseURL() string {
+	return c.baseURL()
+}
+
 // registryRequestTimeout bounds a single registry request end to end,
 // including reading the response body. Without it a hung or slow-drip
 // registry response stalls the command indefinitely with no way out but

@@ -117,6 +117,15 @@ objects, and commits the installed-release reference only once all assets are
 present. Authorization controls whether a body can be fetched; a digest never
 authorizes access or proves package ownership.
 
+The existing package metadata endpoint may advertise this capability by adding
+`contentManifest` and an `objectPathTemplate` containing `{digest}`. The
+template is a same-origin absolute path, such as
+`/api/package-objects/{digest}`; substituting a canonical object ID yields an
+endpoint that returns that object's raw bytes. Registries that do not advertise
+both fields remain archive-only and clients use the existing verified archive
+path. Object endpoints apply the same release authorization as metadata and
+must not expose private-package existence through distinguishable digest errors.
+
 ### Boundaries for dependent work
 
 - #266 implements the common object-store and installed-release reference APIs,

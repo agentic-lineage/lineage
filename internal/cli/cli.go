@@ -14,6 +14,7 @@ import (
 	"github.com/agentic-lineage/lineage/internal/atomicfile"
 	"github.com/agentic-lineage/lineage/internal/auth"
 	"github.com/agentic-lineage/lineage/internal/config"
+	"github.com/agentic-lineage/lineage/internal/distribution"
 	"github.com/agentic-lineage/lineage/internal/graph"
 	"github.com/agentic-lineage/lineage/internal/materialize"
 	"github.com/agentic-lineage/lineage/internal/packages"
@@ -339,7 +340,7 @@ func runPackagePull(args []string, home string, stdout, stderr io.Writer) error 
 	// Pull is an unauthenticated read - the registry doesn't gate who can
 	// fetch a published package, only who can publish one.
 	cfg := packages.RegistryConfig{URL: os.Getenv("LINEAGE_REGISTRY_URL")}
-	name, err := packages.Pull(ref, cfg, destParent, asName)
+	name, err := distribution.Pull(ref, cfg, home, destParent, asName)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return err
@@ -386,7 +387,7 @@ func runPackageImport(args []string, home string, stdout, stderr io.Writer) erro
 		return err
 	}
 
-	name, err := packages.Import(f, destParent, asName)
+	name, err := distribution.ImportArchive(f, home, destParent, asName)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return err
@@ -991,18 +992,18 @@ func enableRef(ref, home string, autoApprove, preConfirmed bool, stdin *bufio.Re
 // the content matches (digests equal) - a genuine conflict, the same
 // name/version now resolving to different content, still fails loudly
 // instead of silently keeping the stale local copy.
-func importAddSource(ref, destParent string) (name, action string, err error) {
+func importAddSource(ref, home, destParent string) (name, action string, err error) {
 	if info, statErr := os.Stat(ref); statErr == nil && !info.IsDir() {
 		f, openErr := os.Open(ref)
 		if openErr != nil {
 			return "", "", openErr
 		}
 		defer f.Close()
-		name, err = packages.Import(f, destParent, "")
+		name, err = distribution.ImportArchive(f, home, destParent, "")
 		action = "imported"
 	} else {
 		cfg := packages.RegistryConfig{URL: os.Getenv("LINEAGE_REGISTRY_URL")}
-		name, err = packages.Pull(ref, cfg, destParent, "")
+		name, err = distribution.Pull(ref, cfg, home, destParent, "")
 		action = "fetched"
 	}
 
@@ -1048,7 +1049,7 @@ func runAdd(args []string, home string, stdin *bufio.Reader, stdout, stderr io.W
 		return err
 	}
 
-	name, action, err := importAddSource(ref, destParent)
+	name, action, err := importAddSource(ref, home, destParent)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return err

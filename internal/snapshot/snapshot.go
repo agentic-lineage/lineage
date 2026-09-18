@@ -91,6 +91,12 @@ func hashID(data []byte) ObjectID {
 	return ObjectID("sha256:" + hex.EncodeToString(sum[:]))
 }
 
+// ObjectIDFor returns the canonical identity for data. Registry clients use
+// it to reject mismatched downloads before admitting any bytes to the CAS.
+func ObjectIDFor(data []byte) ObjectID {
+	return hashID(data)
+}
+
 // blobPath returns where an object with the given ID lives under root,
 // fanned out into a two-character subdirectory (git-style) so a large
 // number of objects doesn't produce one enormous flat directory.
@@ -491,6 +497,12 @@ func validateContentManifest(m ContentManifest) error {
 		return fmt.Errorf("does not reference %s", packages.ManifestFileName)
 	}
 	return nil
+}
+
+// ValidateContentManifest verifies that m is a safe, canonical ADR 0017
+// release manifest before a registry client uses any of its paths or IDs.
+func ValidateContentManifest(m ContentManifest) error {
+	return validateContentManifest(m)
 }
 
 func verifyContentManifestObjects(home string, m ContentManifest) error {
