@@ -1,0 +1,100 @@
+# 0020 Safety Compliance Taxonomy
+
+Status: Proposed
+
+Date: 2026-09-18
+
+## Context
+
+Lineage packages are not passive archives — they become agent instructions and local files inside a receiver project. A generic secret scan is not enough: the runtime needs to tell users what is unsafe, what is risky, what is intentionally sensitive, and what is merely informational.
+
+Safety-relevant checks already exist, but the policy behind them is scattered across several ADRs (0006 capabilities, 0009 secrets, 0010 path safety, 0011 import/export trust, 0019 instruction-risk scanning) and the code's own ad hoc `Errors`/`Notes` split, with no single place that defines what counts as a hard stop, what counts as a warning, and where each control is supposed to run. One category of risk named in product intent — personal information disclosed in package content — has no code and no policy slot to land in yet.
+
+This ADR is the parent policy decision: it defines the severity taxonomy once, maps every existing check into it, and gives every future safety-compliance check (including ones not yet built) an unambiguous home to reference.
+
+**Numbering note**: this record was drafted while ADRs 0016–0019 were also in flight (0016 package distribution, 0017 content addressing, 0018 behavioral model, 0019 instruction-risk scanning). It is numbered 0020 to avoid collision, and defers to 0019 rather than re-opening it — 0019 shipped its own reviewed severity split for instruction-risk scanning before this ADR was finalized, and re-litigating an accepted, merged decision is out of scope here.
+
+## Decision
+
+### Severity taxonomy
+
+Four messaging categories, collapsing to two enforcement classes:
+
+| Category | Enforcement class | Blocks? |
+|---|---|---|
+| Unsafe | Hard-stop | Yes |
+| Risky | Warning | No |
+| Sensitive (intentional) | Warning | No |
+| Informational | Info | No |
+
+Sensitive and Informational keep distinct copy/tone from Risky rather than collapsing into one generic "Warning" bucket — "your resume has a phone number in it," "this package wants network access," and "we couldn't verify anything else about it" are different enough in nature that lumping them together would train users to ignore all three.
+
+**Severity is fixed per check, never conditional or escalating** — no scoring engine, consistent with 0009's rejection of an entropy/ML-based engine for secrets. If a specific pattern is bad enough to always block, it gets its own Unsafe-tier check rather than a variable-severity one.
+
+**Hard-stop is reserved for deterministic/binary checks already enforced elsewhere in Lineage** — secrets, path traversal/symlinks, missing declared skills, digest mismatch, unsupported schema. A new, heuristic/pattern-based check starts at Risky or Sensitive and can be promoted to Unsafe later only once it's proven reliable in practice; it does not start there. **PII detection follows this rule**: both of its sub-checks are non-blocking, because escalating a heuristic PII match to a hard-stop risks false-positive lockouts on legitimate packages (e.g. a resume workflow legitimately containing a name and phone number).
+
+This principle does not reopen 0019. Instruction-risk scanning already shipped with its own reviewed severity split (see below) before this ADR was finalized, and that split is adopted here as-is.
+
+### The matrix (21 rows)
+
+Columns: `check`, `category`, `pipeline stage(s)`, `severity`, `blocks?`, `example copy`, `status` (implemented/planned — whether the check exists in code exactly as classified here, not just whether related data exists), `owning reference` (the ADR, implementation issue, code path, or test that backs the row, so documented policy is never confused with what's actually shipped). One row per conceptual check family (e.g. all archive-extraction failure modes are one row), not one row per distinct error string — this is a policy record, not an error-message catalog.
+
+This matrix reflects the state of `develop` as of this ADR's writing, including the MCP-dependency validation (rows 17–18) that merged after the taxonomy's first draft — see the note after row 18.
+
+| # | Check | Category | Pipeline stage(s) | Severity | Blocks? | Example copy | Status | Owning ref |
+|---|---|---|---|---|---|---|---|---|
+| 1 | Secret scan (credential-shaped content: `.env`, keys, AWS/GitHub/Google tokens) | Unsafe | Publish, Pull/Import | Hard-stop | Yes | "filename matches denylisted credential file .env" | Implemented | `internal/packages/secrets.go`; ADR 0009 |
+| 2 | High-risk PII patterns (SSN, credit card, gov ID) | Risky | Publish, Inspect, Pull/Import | Warning | No | "content matches a pattern resembling an SSN or government ID" | Planned | This ADR |
+| 3 | Archive entry safety (path traversal, unsupported entry types, negative/oversized entries, decompression-bomb caps) | Unsafe | Pull/Import | Hard-stop | Yes | "archive entry %q has unsupported type; only regular files and directories are allowed" | Implemented | `internal/packages/{safepath,import}.go`; ADR 0010, 0011 |
+| 4 | Symlink rejection (content, entrypoints, materialization) | Unsafe | Publish, Inspect, Enable/Materialize | Hard-stop | Yes | "refusing to include symlink %s" | Implemented | `internal/packages/discovery.go`, `internal/materialize/materialize.go` |
+| 5 | Manifest schema/name/version validation | Unsafe | Publish, Inspect, Pull/Import, Enable, Runtime | Hard-stop | Yes | "manifest declares schema %d, but this build only understands schema %d" | Implemented | `internal/packages/manifest.go`; ADR 0005 |
+| 6 | Export authority (declared agent/workflow missing on disk) | Unsafe | Publish, Inspect | Hard-stop | Yes | "manifest declares agent %q but it was not found" | Implemented | `internal/packages/{discovery,validate}.go`; ADR 0005 |
+| 7 | Workflow → skill reference missing (single package, structural — a workflow step names a skill absent from the whole package) | Unsafe | Publish, Inspect | Hard-stop | Yes | "workflow %q references skill %q, which was not found in this package" | Implemented | `internal/packages/validate.go` (workflow-steps loop); `TestValidateRejectsWorkflowWithBrokenStep`; no dedicated ADR |
+| 7b | Manifest `requires.skills` unsatisfied by this package alone (the package may still be fine once enabled alongside another package that provides it) | Risky | Publish, Inspect | Warning | No | "requires skill %q, not provided by this package alone — must come from another enabled package" | Implemented | `internal/packages/validate.go` (`Requires.Skills` loop); `TestValidateNotesUnsatisfiedRequiredSkillWithoutFailing`; no dedicated ADR |
+| 8 | Cross-package unresolved skill dependency | Unsafe | Enable, Runtime | Hard-stop | Yes | "package %q requires skill %q, which is not provided by any enabled package" | Implemented | `internal/packages/dependencies.go` |
+| 9 | Registry digest verification | Unsafe | Pull | Hard-stop | Yes | "digest mismatch for %s: registry reported %s, imported content hashes to %s" | Implemented | `internal/packages/registry.go`; ADR 0011, 0012 |
+| 10 | Declared filesystem-read capability — broad | Risky | Publish, Inspect, Enable, Pull/Import | Warning | No | "declares filesystem read access outside its own package (`~`, `*`, `/`)" | Planned | No implementation issue yet — this ADR defines the breadth rule; `internal/packages/manifest.go`; ADR 0006 |
+| 11 | Declared filesystem-read capability — scoped | Informational | Inspect | Info | No | "declares read access confined to its own content" | Planned | No implementation issue yet; `internal/packages/manifest.go`; ADR 0006 |
+| 12 | Declared network capability (any) | Risky | Publish, Inspect, Enable, Pull/Import | Warning | No | "declares network access" | Planned | No implementation issue yet — the field is read and printed today with no severity classification at all; `internal/packages/manifest.go`; ADR 0006 |
+| 13 | Personal info / intentional PII (name, email, phone, address) | Sensitive | Publish, Inspect, Pull/Import | Warning (disclosure) | No | "package includes what looks like personal contact information" | Planned | This ADR |
+| 14a | Instruction risk — exfiltration / silent-destructive action / credential collection | Unsafe | Publish, Inspect, Enable | Hard-stop | Yes | "network action near a credential-shaped noun" / "destructive action without confirmation" | Implemented | `internal/packages/instructions.go` (`ScanForInstructionRisk`); ADR 0019 |
+| 14b | Instruction risk — prompt override / broad local read | Risky | Publish, Inspect, Enable | Warning | No | "content resembles 'ignore previous instructions'" | Implemented | `internal/packages/instructions.go`; ADR 0019 |
+| 14c | Instruction risk — disable-safety language (conditional) | Risky, escalates to Unsafe if co-located with 14a in the same file | Publish, Inspect, Enable | Warning, Hard-stop if paired | Conditional | alone: "disable safety checks" warns; paired with an exfiltration/destructive/credential match in the same file: blocks | Implemented | `internal/packages/instructions.go`; ADR 0019 |
+| 15 | No declared provider compatibility | Informational | Inspect | Info | No | "package declares no entrypoints for claude or codex" | Implemented | `internal/packages/{manifest,portability}.go` (`ProviderCompatibilityNotes`, already rendered in its own section, separate from `Warnings`) |
+| 16 | Setup/materialization write confirmation | Procedural | Enable/Materialize | Confirmation-gated | Blocks silent write | "will create X — continue?" | Implemented | `internal/materialize/materialize.go`; ADR 0008, 0019 (0019 already folds instruction-risk warnings into this same prompt) |
+| 17 | Declared MCP dependency validation (unmodelled/credential-bearing fields, credential-shaped args, transport well-formedness, network-capability cross-check) | Unsafe | Publish, Inspect, Pull/Import, Enable, Runtime | Hard-stop | Yes | "args must not carry credential-bearing options; declare auth: receiver and keep credentials receiver-local" | Implemented | `internal/packages/mcp.go` (`ValidateMCPDependencies`), wired via `discovery.go:44` and `validate.go:74`; no dedicated ADR yet |
+| 18 | MCP provider-support gate (declared MCP dependency the active provider adapter can't materialize) | Unsafe | Runtime | Hard-stop | Yes | "provider %q does not yet support MCP materialization required by package %q; refusing to silently drop %d declared MCP server(s)" | Implemented | `internal/packages/mcp.go` (`ValidateMCPProviderSupport`), `internal/runtime/plan.go:40`; no dedicated ADR yet |
+
+Rows 7 and 7b are deliberately kept separate, verified against current test coverage rather than assumed: row 7 is a **structural validation failure already gated by `report.Errors`** today (`TestValidateRejectsWorkflowWithBrokenStep` asserts `Passed() == false`) — a workflow step naming a skill absent from the entire package is a broken package, full stop, regardless of what else gets enabled alongside it. Row 7b is the separate, genuinely non-blocking `Requires.Skills` case — a package declaring a dependency it doesn't itself satisfy, which today is already a `Note` (`TestValidateNotesUnsatisfiedRequiredSkillWithoutFailing` asserts `Passed() == true`) because another enabled package may supply it. An earlier draft of this ADR conflated the two and classified row 7 as a non-blocking Risky warning; that would have quietly downgraded an existing hard-stop, which this revision corrects.
+
+The `Status` column above records only whether the check exists in code exactly as described — implemented severity framing, not just implemented data collection. Rows 10–12 (capability breadth/network classification) are `Planned` even though `Capabilities.Filesystem.Read`/`Network` are already parsed and printed today (ADR 0006): the *severity classification* this ADR proposes for them doesn't exist in code yet, only inert display text does. None of rows 10–12 has an implementation issue filed yet.
+
+Rows 17–18 cover a capability surface (MCP server dependencies) that landed on `develop` after this ADR's first draft and has no dedicated ADR of its own yet — they're included here directly rather than left out, since the acceptance criterion is that *every* existing validation check is mapped, not just the ones present when drafting began.
+
+Rows 14a–14c are not new work — they document ADR 0019's already-shipped severity split in this taxonomy's column format, so instruction-risk findings are queryable in the same table as every other check instead of only living in a separate ADR.
+
+### Placement and trust rules
+
+- **Warning-tier and Sensitive-tier findings are always recomputed locally** at inspect, import, and pull time; a package's own publish-time self-report is never trusted as the receiver's source of truth. This matches 0011's core principle that archives are untrusted regardless of source. Publish still runs the same checks so authors get early feedback, but that result isn't propagated as the receiver's answer.
+- **Enable does not get a second confirmation for warnings.** Risky/Sensitive findings fold into the existing setup-write confirmation from 0008 (one prompt listing both files-to-write and declared risks/sensitivities), matching how 0019 already implemented this for instruction-risk findings — not a second sequential prompt.
+- **Inspect renders Informational items in their own, lower-emphasis section**, separate from Risky/Sensitive findings that warrant an actual decision.
+- **Capability-declaration breadth rule** (rows 10–11, purely syntactic, no filesystem access required to evaluate): a `Filesystem.Read` declaration is Risky if any path is outside the package's own content directory or contains a wildcard/home-relative pattern (`*`, `**`, `~`, a leading `/`); Informational if every path is relative and confined to the package's own tree. `Network` has no such scoping concept in the manifest today, so any non-empty declaration is Risky — inventing per-host scoping is a manifest-schema change, out of scope here.
+- **Provider-compatibility gap (row 15) stays Informational**, not Risky — it's a functional/UX signal about whether the package will work with a given provider, not a safety signal.
+- **Exit-code/CLI signaling** for warn-only runs (e.g. a reserved exit code, or a `--strict` flag) is noted as a future direction but not designed in this ADR — same "not building the mechanism" boundary as not building the PII/breadth scanners themselves.
+
+## Consequences
+
+- Every safety-compliance check, present and future, has one place that says what severity it starts at and why — new proposals reference this ADR's rules instead of re-deriving them per issue.
+- Rows 7 and 7b get no code change at all: both already behave exactly as classified (row 7 already blocks via `Errors`, row 7b is already a non-blocking `Note`) — this ADR only assigns them taxonomy labels (Unsafe/Risky) consistent with existing, tested behavior.
+- Capability display (rows 10–12) gains an explicit Risky/Informational severity framing that doesn't exist in code today — today's `validate`/`inspect` output prints the raw declared list with no severity distinction at all. Implementing that framing is separate follow-up work, not part of this ADR.
+- PII detection (rows 2, 13) and capability-breadth classification (rows 10, 11) remain unbuilt; this ADR gives them a severity and placement to build toward, but building the actual scanners is explicitly out of scope here.
+- Because hard-stop is now explicitly reserved for already-deterministic checks, any future proposal to add a new hard-stop check needs to make the case that it's deterministic enough to clear that bar — this is a deliberately higher bar than "warning," by design.
+
+## Follow-Up
+
+- **Implement PII detection** (rows 2, 13): a documented pattern list, split into a Risky-tier high-risk-pattern check (SSN/credit-card/gov-ID shapes) and a Sensitive-tier general-contact-info check (name/email/phone/address), following the same "grow the list, don't build an engine" philosophy as 0009. File as its own implementation issue referencing this ADR — not started here.
+- **Implement capability-breadth classification** (rows 10, 11, 12): apply the syntactic broad-vs-scoped rule above to `Filesystem.Read`, and the any-non-empty-is-Risky rule to `Network`, at inspect/validate time; today capabilities are printed without any severity distinction. File as its own implementation issue referencing this ADR — not started here.
+- **Surface the row-7b and capability-severity classifications in CLI/registry output** — this ADR settles the policy, not the exact rendering; a follow-up should update `runPackageValidate`/`runInspect` output to reflect Risky vs. Informational framing where it's currently flat text (row 7's severity needs no such follow-up — it already renders as a hard error today).
+- **Exit-code/CLI signaling for warn-only runs**, if it becomes a real need (e.g. CI wants to fail on Risky findings without treating them as Unsafe) — deliberately undesigned here.
+- **Re-check this taxonomy whenever a new ADR adds a check** (as 0019 did for instruction-risk) — add its rows here rather than letting policy live only in the originating ADR, so this table stays the single source of truth for severity and placement.
+- **MCP dependency validation (rows 17–18) has no dedicated ADR** — it's real, already-enforced, deterministic policy (credential-bearing arg rejection, transport well-formedness, network-capability cross-check, provider-support gating) that landed without one. Worth its own short ADR later for the same reason 0009/0010/0011 exist for secrets/paths/archives — this taxonomy records its severity placement in the meantime so it isn't silently missing from the policy record.
