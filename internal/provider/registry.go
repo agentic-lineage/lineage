@@ -20,6 +20,13 @@ type Provider struct {
 	MaterializeOnly bool
 	Config          ConfigAdapter
 	renderer        SkillRenderer
+	fileRenderer    SkillFileRenderer
+
+	// ContextPreamble, if set, is written once before the
+	// lineage:begin/lineage:end marker block the first time ContextFile
+	// is created. Later calls never re-add it: replaceBlock only touches
+	// the marked region, so hand-written content above the markers survives.
+	ContextPreamble string
 }
 
 // ConfigState records a provider-specific project configuration edit so the
@@ -43,6 +50,13 @@ type ConfigAdapter interface {
 var registry = []Provider{
 	{Name: "claude", SkillsDir: filepath.Join(".claude", "skills"), ContextFile: "CLAUDE.md"},
 	{Name: "codex", SkillsDir: filepath.Join(".agents", "skills"), ContextFile: "AGENTS.md"},
+	{
+		Name:            "cursor",
+		SkillsDir:       filepath.Join(".cursor", "rules"),
+		ContextFile:     filepath.Join(".cursor", "rules", "lineage.mdc"),
+		fileRenderer:    cursorSkillRenderer{},
+		ContextPreamble: cursorContextPreamble,
+	},
 	{Name: "auggie", SkillsDir: filepath.Join(".augment", "skills"), ContextFile: "AGENTS.md", renderer: auggieSkillRenderer{}},
 	{Name: "windsurf", SkillsDir: filepath.Join(".windsurf", "rules"), ContextFile: ".windsurfrules", MaterializeOnly: true},
 	{Name: "aider", SkillsDir: filepath.Join(".aider", "skills"), ContextFile: "CONVENTIONS.md", Config: AiderConfigAdapter{}},

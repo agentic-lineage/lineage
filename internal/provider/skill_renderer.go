@@ -11,6 +11,10 @@ type SkillRenderer interface {
 	Render(stagedName string, source []byte) ([]byte, error)
 }
 
+type SkillFileRenderer interface {
+	RenderFile(pkgName, skillName string, files map[string][]byte) (filename string, content []byte, err error)
+}
+
 type auggieSkillRenderer struct{}
 
 func (auggieSkillRenderer) Render(
@@ -65,4 +69,21 @@ func (p Provider) RenderSkill(
 	}
 
 	return p.renderer.Render(stagedName, source)
+}
+
+func (p Provider) RenderSkillFile(
+	pkgName string,
+	skillName string,
+	files map[string][]byte,
+) (filename string, content []byte, ok bool, err error) {
+	if p.fileRenderer == nil {
+		return "", nil, false, nil
+	}
+
+	filename, content, err = p.fileRenderer.RenderFile(pkgName, skillName, files)
+	return filename, content, true, err
+}
+
+func (p Provider) RendersSkillFile() bool {
+	return p.fileRenderer != nil
 }

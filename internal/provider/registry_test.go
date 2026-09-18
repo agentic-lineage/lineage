@@ -28,6 +28,13 @@ func TestKnownProviders(t *testing.T) {
 			ContextFile: "AGENTS.md",
 		},
 		{
+			Name:            "cursor",
+			SkillsDir:       filepath.Join(".cursor", "rules"),
+			ContextFile:     filepath.Join(".cursor", "rules", "lineage.mdc"),
+			fileRenderer:    cursorSkillRenderer{},
+			ContextPreamble: cursorContextPreamble,
+		},
+		{
 			Name:        "auggie",
 			SkillsDir:   filepath.Join(".augment", "skills"),
 			ContextFile: "AGENTS.md",
@@ -66,6 +73,25 @@ func TestGetKnownProvider(t *testing.T) {
 	}
 	if p.SkillsDir == "" || p.ContextFile != "AGENTS.md" {
 		t.Fatalf("Get(codex) = %#v", p)
+	}
+}
+
+func TestGetCursorProvider(t *testing.T) {
+	p, err := Get("cursor")
+	if err != nil {
+		t.Fatalf("Get(cursor) error = %v", err)
+	}
+	if p.SkillsDir != filepath.Join(".cursor", "rules") {
+		t.Fatalf("Get(cursor).SkillsDir = %q, want .cursor/rules", p.SkillsDir)
+	}
+	if p.ContextFile != filepath.Join(".cursor", "rules", "lineage.mdc") {
+		t.Fatalf("Get(cursor).ContextFile = %q, want .cursor/rules/lineage.mdc", p.ContextFile)
+	}
+	if !p.RendersSkillFile() {
+		t.Fatal("Get(cursor).RendersSkillFile() = false, want true (Cursor rules need frontmatter, not a verbatim copy)")
+	}
+	if p.ContextPreamble == "" {
+		t.Fatal("Get(cursor).ContextPreamble = \"\", want a frontmatter preamble so lineage.mdc is always loaded")
 	}
 }
 

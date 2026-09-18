@@ -221,18 +221,31 @@ what it would materialize before writing.
 
 - `lineage run claude --dry-run` previews Claude materialization.
 - `lineage run codex --dry-run` previews Codex materialization.
+- `lineage run cursor --dry-run` previews Cursor materialization (skills are
+  written as `.mdc` rule files under `.cursor/rules/`, since Cursor ignores a
+  plain `.md` file with no frontmatter — see the note below).
 - `lineage run auggie --dry-run` previews Auggie materialization.
 - `lineage run cline --dry-run` previews Cline materialization.
 - `lineage run aider --dry-run` previews Aider materialization.
 - `lineage run windsurf --dry-run` previews Windsurf project materialization
   without resolving a Windsurf binary.
-- `lineage workflow run <workflow-name> <claude|codex|auggie|windsurf|aider|cline> --dry-run`
+- `lineage workflow run <workflow-name> <claude|codex|cursor|auggie|windsurf|aider|cline> --dry-run`
   narrows the plan to one exported workflow; Windsurf and Cline remain
   materialization-only.
 
-The current adapters focus on Claude, Codex, Auggie, Windsurf, Aider, and
-Cline. The package shape stays plain so future adapters can use the same
+The current adapters focus on Claude, Codex, Cursor, Auggie, Windsurf, Aider,
+and Cline. The package shape stays plain so future adapters can use the same
 manifest, skills, workflows, agents, policies, references, and setup material.
+
+Cursor currently supports skills containing only `SKILL.md`. Skills with
+supporting files (such as `scripts/` or `references/`) fail materialization with
+an error listing the unsupported files, rather than silently dropping them.
+Use Claude or Codex for skills that require those supporting assets.
+
+Cursor's real CLI binary isn't literally named `cursor` on most machines (it
+installs as `cursor-agent`, sometimes aliased `agent`), so `lineage run cursor`
+will usually need the `providers.cursor.binary` override shown below —
+`lineage doctor` says so explicitly if it can't find a match on `PATH`.
 
 For the contributor-facing work to compile an existing agent workspace into
 those portable artifacts, see
@@ -250,6 +263,8 @@ providers:
     binary: /path/to/real/claude
   codex:
     binary: /path/to/real/codex
+  cursor:
+    binary: /path/to/real/cursor-agent
   auggie:
     binary: /path/to/real/auggie
   aider:
@@ -292,8 +307,8 @@ lineage enable <package-path-or-id> [--yes]
 lineage disable <package-path-or-id> [--yes]
 lineage list
 lineage inspect <package-path-or-id> [--yaml]
-lineage run <claude|codex|auggie|windsurf|aider|cline> [--dry-run] [--yes] [-- provider args...]
-lineage workflow run <workflow-name> <claude|codex|auggie|windsurf|aider|cline> [--dry-run] [--yes] [-- provider args...]
+lineage run <claude|codex|cursor|auggie|windsurf|aider|cline> [--dry-run] [--yes] [-- provider args...]
+lineage workflow run <workflow-name> <claude|codex|cursor|auggie|windsurf|aider|cline> [--dry-run] [--yes] [-- provider args...]
 
 lineage install-shims                 # launchable providers only; not Windsurf/Cline
 lineage doctor
