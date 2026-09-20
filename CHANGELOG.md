@@ -32,6 +32,10 @@ All notable changes to Lineage will be documented here.
   regenerable-vs-authoritative classification in ADR 0015 (#200).
 ### Added
 
+- Store CAS package objects with adaptive Zstandard compression while keeping
+  their SHA-256 identity over original bytes. Small or incompressible objects
+  remain raw, existing stores need no migration, and `inspect` now separates
+  logical verified bytes from physical local storage and reports saved bytes.
 - Add `lineage compile <model.json> <path> --out <dir>` (#106): compiles a
   saved behavioral model into a provider-neutral package (`lineage.yaml`, one
   skill per step with bundled scripts and references, `WORKFLOW.md`, and

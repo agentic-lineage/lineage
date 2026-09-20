@@ -209,13 +209,14 @@ func getBlob(root string, id ObjectID) ([]byte, error) {
 // its ID. Identical content, written any number of times, always returns
 // the same ID.
 func WriteObject(home string, data []byte) (ObjectID, error) {
-	return putBlob(config.ObjectsDir(home), data)
+	return putObject(config.ObjectsDir(home), data)
 }
 
 // ReadObject returns the content of the object with the given ID,
 // verifying it against the ID before returning it.
 func ReadObject(home string, id ObjectID) ([]byte, error) {
-	return getBlob(config.ObjectsDir(home), id)
+	data, _, err := getObject(config.ObjectsDir(home), id)
+	return data, err
 }
 
 // VerifyObject reports whether the object with the given ID is present and
@@ -239,14 +240,8 @@ const (
 // ObjectAvailability verifies id's stored bytes when present. Invalid IDs
 // are errors because they are malformed manifest input, not cache misses.
 func ObjectAvailability(home string, id ObjectID) (ObjectStatus, error) {
-	_, err := ReadObject(home, id)
-	if err == nil {
-		return ObjectVerified, nil
-	}
-	if os.IsNotExist(err) {
-		return ObjectMissing, nil
-	}
-	return ObjectCorrupt, err
+	status, _, err := ObjectStorageInfo(home, id)
+	return status, err
 }
 
 // BuildContentManifest derives ADR 0017's deterministic package content
