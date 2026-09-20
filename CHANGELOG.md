@@ -4,6 +4,10 @@ All notable changes to Lineage will be documented here.
 
 ## Unreleased
 
+> Maintainer reconciliation: 2026-09-20. Entries below describe changes already
+> present on `develop`; open PRs and planned work belong in `ROADMAP.md`, not
+> in this changelog.
+
 - **Breaking:** `lineage analyze` no longer defaults to Claude or a built-in
   model (#288). Choose a provider (`--provider anthropic|openai|openrouter`)
   and `--model`; the key comes from that provider's environment variable.

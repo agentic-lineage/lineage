@@ -34,6 +34,27 @@ and pull-request state remains the source of truth for individual tasks.
   plus setup needs, validation gates, and explicit unresolved decisions
   (#103, ADR 0018).
 
+## Current State — 2026-09-20
+
+- Content-addressed package distribution is no longer only design work: the
+  package content-addressing contract (ADR 0017), verified local content store,
+  and missing-digest synchronization have landed through #272, #273, #279, and
+  #283.
+- Package-weight inspection landed in #286. Adaptive object compression remains
+  active work in #294 and must preserve the digest/verification semantics from
+  ADR 0017.
+- The behavioral-compilation pipeline has advanced through evidence inventory,
+  the evidence-linked behavioral model (ADR 0018), agent-assisted analysis, and
+  provider-neutral compilation. Portability/behavior validation and
+  provider-specific emitters remain follow-up work.
+- Instruction-risk scanning is now part of the package trust boundary under ADR
+  0019, with explicit hard-stop/warning semantics. Materialization-time
+  re-scanning remains follow-up work (#142).
+- Analysis-provider selection changed under #288: analysis no longer implicitly
+  selects Claude; callers choose the provider/model and acknowledge egress.
+  This is recorded in the Unreleased changelog and should remain distinct from
+  package runtime provider adapters.
+
 ## Now
 
 1. **Integrate the current contribution queue without weakening package
@@ -55,9 +76,12 @@ and pull-request state remains the source of truth for individual tasks.
    scripts or silently invent missing behavior.
 
 3. **Close receiver trust and lifecycle gaps before broader distribution.**
-   Exact-version pinning is the current rollback path (#122). Define registry
-   trust states and version yanking (#123, #135), then build the smallest
-   useful safety policy and reporting surfaces (#127–#136).
+   Exact-version pinning is the current rollback path (#122). Instruction-risk
+   scanning (#128, ADR 0019) is now implemented, but content-integrity
+   re-scanning at materialization time remains open (#142). Continue registry
+   trust-state/version-yanking work (#123, #135) and the remaining safety and
+   reporting surfaces (#127–#136) without weakening the established package
+   trust boundary.
 
 4. **Prove the loop with real packages and receivers.** Prioritize a small
    package ecosystem, independent authors, receiver feedback, and contributor

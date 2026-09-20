@@ -26,6 +26,15 @@ Each record should include:
 - `Accepted`: current project direction.
 - `Superseded`: replaced by a newer decision.
 
+## Maintainer Sync
+
+Last reconciled against `develop`: **2026-09-20**.
+
+This index is a ledger of accepted/proposed architectural decisions, not a
+release-status document. Current implementation and release state belongs in
+`ROADMAP.md` and `CHANGELOG.md`; when implementation changes a decision's
+semantics, update or supersede the ADR rather than silently editing history.
+
 ## Decisions
 
 - [0001 Use Go For The Local Runtime](0001-use-go-for-local-runtime.md)
