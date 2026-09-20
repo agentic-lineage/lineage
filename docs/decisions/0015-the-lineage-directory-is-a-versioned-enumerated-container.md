@@ -29,7 +29,8 @@ This is deliberately scoped to the container and its state files, not the format
 | `user/packages/` | `internal/config`/`lineage init user` | Directories: imported/authored packages |
 | `workspaces/<name>/packages/` | `internal/config`/`lineage init workspace` | Directories: workspace-scoped packages |
 | `bin/` | `internal/shim` | Generated provider shim scripts/batch files |
-| `objects/<hash[:2]>/<hash[2:]>` | `internal/snapshot` | Content-addressed file objects (ADR 0014) |
+| `objects/<hash[:2]>/<hash[2:]>` | `internal/snapshot` | Raw content-addressed file objects (ADR 0014) |
+| `objects/zstd-v1/<hash[:2]>/<hash[2:]>` | `internal/snapshot` | Adaptively compressed object representations; IDs still hash original bytes (ADR 0020) |
 | `snapshots/<hash[:2]>/<hash[2:]>` | `internal/snapshot` | Content-addressed snapshot manifests, schema-versioned (ADR 0014) |
 | `github_token` | `internal/auth` | Plain-text bearer token, `0600`, written by `lineage login` |
 

@@ -1,6 +1,7 @@
 package snapshot
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"sync"
@@ -79,6 +80,81 @@ func TestReadObjectRoundTrips(t *testing.T) {
 	}
 }
 
+func TestWriteObjectCompressesOnlyWhenWorthwhile(t *testing.T) {
+	t.Run("compressible", func(t *testing.T) {
+		home := t.TempDir()
+		data := bytes.Repeat([]byte("workflow-step: review\n"), 256)
+		id, err := WriteObject(home, data)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		status, info, err := ObjectStorageInfo(home, id)
+		if err != nil || status != ObjectVerified {
+			t.Fatalf("ObjectStorageInfo() = %v, %+v, %v; want verified zstd object", status, info, err)
+		}
+		if info.Encoding != "zstd" || info.StoredBytes >= info.LogicalBytes {
+			t.Fatalf("ObjectStorageInfo() = %+v, want smaller zstd representation", info)
+		}
+		rawPath, err := blobPath(config.ObjectsDir(home), id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := os.Stat(rawPath); !os.IsNotExist(err) {
+			t.Fatalf("raw object path stat error = %v, want not exist", err)
+		}
+		got, err := ReadObject(home, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(got, data) {
+			t.Fatal("ReadObject() did not restore the original bytes")
+		}
+	})
+
+	t.Run("incompressible", func(t *testing.T) {
+		home := t.TempDir()
+		data := make([]byte, 256)
+		for i := range data {
+			data[i] = byte(i)
+		}
+		id, err := WriteObject(home, data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		status, info, err := ObjectStorageInfo(home, id)
+		if err != nil || status != ObjectVerified {
+			t.Fatalf("ObjectStorageInfo() = %v, %+v, %v; want verified raw object", status, info, err)
+		}
+		if info.Encoding != "raw" || info.StoredBytes != int64(len(data)) {
+			t.Fatalf("ObjectStorageInfo() = %+v, want raw representation", info)
+		}
+	})
+}
+
+func TestReadObjectDetectsCompressedCorruption(t *testing.T) {
+	home := t.TempDir()
+	data := bytes.Repeat([]byte("compress me\n"), 256)
+	id, err := WriteObject(home, data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path, err := objectRepresentationPath(config.ObjectsDir(home), id, "zstd")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("not a zstd frame"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ReadObject(home, id); err == nil {
+		t.Fatal("ReadObject() error = nil for corrupt compressed object, want error")
+	}
+	status, err := ObjectAvailability(home, id)
+	if err == nil || status != ObjectCorrupt {
+		t.Fatalf("ObjectAvailability() = %v, %v; want ObjectCorrupt, error", status, err)
+	}
+}
+
 func TestInspectWeightSeparatesLogicalWeightFromLocalCAS(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "weight-pack")
 	if err := packages.InitPackage(dir, "weight-pack"); err != nil {
@@ -126,6 +202,39 @@ func TestInspectWeightSeparatesLogicalWeightFromLocalCAS(t *testing.T) {
 	if report.FullBody.Context.Available {
 		t.Errorf("full body context = %+v, want unavailable when it includes a binary asset", report.FullBody.Context)
 	}
+}
+
+func TestInspectWeightReportsCompressedPhysicalStorage(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "compressed-weight-pack")
+	if err := packages.InitPackage(dir, "compressed-weight-pack"); err != nil {
+		t.Fatal(err)
+	}
+	content := bytes.Repeat([]byte("repeatable workflow guidance\n"), 256)
+	mustWrite(t, filepath.Join(dir, "skills", "review", "SKILL.md"), string(content))
+	home := t.TempDir()
+	manifest, err := StorePackage(home, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	report, err := InspectWeight(home, manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.LocalStorage.PhysicalBytes >= report.LocalStorage.VerifiedBytes {
+		t.Fatalf("physical bytes %d, want less than verified logical bytes %d", report.LocalStorage.PhysicalBytes, report.LocalStorage.VerifiedBytes)
+	}
+	if report.LocalStorage.SavedBytes != report.LocalStorage.VerifiedBytes-report.LocalStorage.PhysicalBytes {
+		t.Fatalf("saved bytes %d, want logical minus physical", report.LocalStorage.SavedBytes)
+	}
+	for _, asset := range report.Assets {
+		if asset.Path == "skills/review/SKILL.md" {
+			if asset.LocalEncoding != "zstd" || asset.LocalStoredBytes >= asset.Bytes {
+				t.Fatalf("compressed asset = %+v, want smaller zstd representation", asset)
+			}
+			return
+		}
+	}
+	t.Fatal("weight report is missing compressed skill asset")
 }
 
 func TestInspectWeightEstimatesKnownTextExtensionsAndEmptyBody(t *testing.T) {

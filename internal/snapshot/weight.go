@@ -27,11 +27,13 @@ type EstimatorReport struct {
 // AssetWeight reports one logical package asset. LocalStatus describes the
 // CAS object, while Bytes remains the asset's logical package weight.
 type AssetWeight struct {
-	Path        string          `yaml:"path"`
-	Kind        string          `yaml:"kind"`
-	Bytes       int64           `yaml:"bytes"`
-	LocalStatus string          `yaml:"local_status"`
-	Context     ContextEstimate `yaml:"context"`
+	Path             string          `yaml:"path"`
+	Kind             string          `yaml:"kind"`
+	Bytes            int64           `yaml:"bytes"`
+	LocalStatus      string          `yaml:"local_status"`
+	LocalEncoding    string          `yaml:"local_encoding,omitempty"`
+	LocalStoredBytes int64           `yaml:"local_stored_bytes,omitempty"`
+	Context          ContextEstimate `yaml:"context"`
 }
 
 // WeightBucket is an exact byte total plus a context estimate. Available is
@@ -53,6 +55,8 @@ type ContextEstimate struct {
 // from StoredBytes: two logical assets can point at one immutable object.
 type LocalStorage struct {
 	VerifiedBytes int64 `yaml:"verified_bytes"`
+	PhysicalBytes int64 `yaml:"physical_bytes"`
+	SavedBytes    int64 `yaml:"saved_bytes"`
 	MissingBytes  int64 `yaml:"missing_bytes"`
 	CorruptBytes  int64 `yaml:"corrupt_bytes"`
 }
@@ -78,15 +82,29 @@ func InspectWeight(home string, m ContentManifest) (WeightReport, error) {
 		Stub:     WeightBucket{Context: ContextEstimate{Available: true}},
 		FullBody: WeightBucket{Context: ContextEstimate{Available: true}},
 	}
+	type inspectedObject struct {
+		status ObjectStatus
+		info   StoredObjectInfo
+	}
+	inspected := make(map[ObjectID]inspectedObject, len(m.Assets))
 	seen := make(map[ObjectID]struct{}, len(m.Assets))
 	for _, asset := range m.Assets {
 		context := estimateContext(asset)
 		entry := AssetWeight{Path: asset.Path, Kind: asset.Kind, Bytes: asset.Bytes, Context: context}
-		status, err := ObjectAvailability(home, asset.Object)
-		if err != nil && status != ObjectCorrupt {
-			return WeightReport{}, fmt.Errorf("inspect local object %s: %w", asset.Object, err)
+		local, ok := inspected[asset.Object]
+		if !ok {
+			status, info, err := ObjectStorageInfo(home, asset.Object)
+			if err != nil && status != ObjectCorrupt {
+				return WeightReport{}, fmt.Errorf("inspect local object %s: %w", asset.Object, err)
+			}
+			local = inspectedObject{status: status, info: info}
+			inspected[asset.Object] = local
 		}
-		entry.LocalStatus = localStatusName(status)
+		entry.LocalStatus = localStatusName(local.status)
+		if local.status == ObjectVerified {
+			entry.LocalEncoding = local.info.Encoding
+			entry.LocalStoredBytes = local.info.StoredBytes
+		}
 		report.Assets = append(report.Assets, entry)
 		report.StoredBytes += asset.Bytes
 		if asset.Kind == "manifest" {
@@ -98,9 +116,11 @@ func InspectWeight(home string, m ContentManifest) (WeightReport, error) {
 			continue
 		}
 		seen[asset.Object] = struct{}{}
-		switch status {
+		switch local.status {
 		case ObjectVerified:
-			report.LocalStorage.VerifiedBytes += asset.Bytes
+			report.LocalStorage.VerifiedBytes += local.info.LogicalBytes
+			report.LocalStorage.PhysicalBytes += local.info.StoredBytes
+			report.LocalStorage.SavedBytes += local.info.LogicalBytes - local.info.StoredBytes
 		case ObjectMissing:
 			report.LocalStorage.MissingBytes += asset.Bytes
 		case ObjectCorrupt:

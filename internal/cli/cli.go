@@ -1421,6 +1421,8 @@ func writeWeightReport(stdout io.Writer, report snapshot.WeightReport) {
 	fmt.Fprintf(stdout, "  stub_bytes: %d\n", report.Stub.Bytes)
 	fmt.Fprintf(stdout, "  full_body_bytes: %d\n", report.FullBody.Bytes)
 	fmt.Fprintf(stdout, "  local_verified_bytes: %d\n", report.LocalStorage.VerifiedBytes)
+	fmt.Fprintf(stdout, "  local_physical_bytes: %d\n", report.LocalStorage.PhysicalBytes)
+	fmt.Fprintf(stdout, "  local_saved_bytes: %d\n", report.LocalStorage.SavedBytes)
 	fmt.Fprintf(stdout, "  local_missing_bytes: %d\n", report.LocalStorage.MissingBytes)
 	fmt.Fprintf(stdout, "  local_corrupt_bytes: %d\n", report.LocalStorage.CorruptBytes)
 	fmt.Fprintf(stdout, "  estimator: %s %s (estimated)\n", report.Estimator.Name, report.Estimator.Version)
