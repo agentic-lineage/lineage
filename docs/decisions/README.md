@@ -47,3 +47,4 @@ Each record should include:
 - [0017 Package Content Addressing Has A Complete, Verifiable Install Contract](0017-package-content-addressing-contract.md)
 - [0018 Behavioral Model Is A Versioned, Evidence-Linked Schema](0018-behavioral-model-is-a-versioned-evidence-linked-schema.md)
 - [0019 Instruction-Risk Scanning: A Documented Pattern List With A Severity Split](0019-instruction-risk-scanning-severity-and-scope.md)
+- [0020 Safety Compliance Taxonomy](0020-safety-compliance-taxonomy.md)
